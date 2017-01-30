@@ -3,9 +3,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 
 /**
  * Created by Aria Pahlavan on 1/28/17.
@@ -15,22 +13,20 @@ class PSortTest {
     
     @BeforeEach
     void setUp() {
-        arr = new int[]{ 2, 17, 5, 24, 0, 0, 45, 1, 156 };
+        arr = new int[]{ 6, 2, 17, 5, 24, 0, 4, 0, 0, 45, 8, 1, 3, 9 , 3000, 50, 10, 95, 56, 7};
     }
     
     @Test
     void parallelSort() throws InterruptedException, ExecutionException {
-        ExecutorService es = Executors.newSingleThreadExecutor();
+    
+        PSort.parallelSort(arr, 0, arr.length);
         
-        PSort.Array = arr;
-        PSort p = new PSort(0, arr.length);
-        Future<?> submit = es.submit(p);
+        Integer[] result = Arrays.stream(arr).boxed().toArray(Integer[]::new);
         
-        while ( submit.get() != null ){}
-        
-        Arrays.stream(PSort.Array).forEach(System.out::println);
-
-        es.shutdown();
+        System.out.println(Arrays.stream(result)
+                                   .map(Object::toString)
+                                   .collect(Collectors.joining(", ", "{", "}")));
+    
     }
     
 }
