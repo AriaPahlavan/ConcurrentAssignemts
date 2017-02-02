@@ -1,11 +1,13 @@
+//Name: Sharmistha Maity, Aria Pahlavan
+//EID: SM47767, AP44342
+//Course: EE 360P (16530)
+//Assignment: Homework 1
+
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-/**
- * Created by Aria Pahlavan on 1/28/17.
- */
 public class PSort implements Runnable {
     private static ExecutorService threadPool = Executors.newCachedThreadPool();
     private int[] array;
