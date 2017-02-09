@@ -26,6 +26,7 @@ public class CyclicBarrier {
        
         
         while ( semaphore.availablePermits() != 0 ) { }
+        
     
         lock.acquire();
         int index = waitingThreads;
