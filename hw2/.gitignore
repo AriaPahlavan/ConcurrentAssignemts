@@ -46,4 +46,5 @@ fabric.properties
 .idea/
 .project
 .classpath
+*.iml
 ConcurrentAssignemts.iml
