@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="JAVA_MODULE" version="4">
+  <component name="EclipseModuleManager">
+    <libelement value="file://multithreadedtc-1.01.jar" />
+    <src_description expected_position="0" />
+  </component>
+  <component name="NewModuleRootManager" inherit-compiler-output="false">
+    <output url="file://$MODULE_DIR$/lockTest/bin" />
+    <exclude-output />
+    <content url="file://$MODULE_DIR$/lockTest" />
+    <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="module-library">
+      <library name="multithreadedtc-1.01.jar">
+        <CLASSES>
+          <root url="file://multithreadedtc-1.01.jar" />
+        </CLASSES>
+        <JAVADOC />
+        <SOURCES />
+      </library>
+    </orderEntry>
+    <orderEntry type="inheritedJdk" />
+  </component>
+</module>
