@@ -22,6 +22,7 @@ public class Garden {
     public void startDigging() throws InterruptedException {
         monitorLock.lock();
         try {
+            System.out.println("Newton is digging hole " + holesDug + 1);
             isShovelTaken.await();
             
             if ( getUnseededHoles() == DUG_HOLES_LIMIT )
@@ -39,6 +40,9 @@ public class Garden {
         monitorLock.lock();
         try {
             holesDug++;
+            System.out.println("Newton is done digging hole " + holesDug);
+
+            unfilledHoles++;
             isEmptyHole.signal();   //TODO order matters?
             isShovelTaken.signal(); //TODO maybe signalAll() is sufficient
         } finally {
@@ -49,6 +53,7 @@ public class Garden {
     public void startSeeding() throws InterruptedException{
         monitorLock.lock();
         try {
+            System.out.println("Benjamin is seeding hole " + seedsPlanted+1);
             isEmptyHole.await();
             
         } finally {
@@ -60,6 +65,11 @@ public class Garden {
         monitorLock.lock();
         try {
             seedsPlanted++;
+            System.out.println("Benjamin is done seeding hole " + seedsPlanted);
+
+            if(getUnseededHoles() < DUG_HOLES_LIMIT){
+                reachedDugMax.signal();
+            }
             isSeedPlanted.signal(); //TODO signalAll() ?
         } finally {
             monitorLock.unlock();
@@ -69,6 +79,10 @@ public class Garden {
     public void startFilling() throws InterruptedException{
         monitorLock.lock();
         try {
+            System.out.println("Mary is filling hole " + unfilledHoles);
+
+            isShovelTaken.await();
+            isSeedPlanted.await();
         
         } finally {
             monitorLock.unlock();
@@ -78,6 +92,13 @@ public class Garden {
     public void doneFilling() {
         monitorLock.lock();
         try {
+            unfilledHoles--;
+            System.out.println("Mary is done filling hole " + unfilledHoles);
+            if(unfilledHoles < UNFILLED_HOLES_LIMIT){
+                reachedUnfilledMax.signal();
+            }
+            isShovelTaken.signal();
+
         
         } finally {
             monitorLock.unlock();
@@ -90,15 +111,18 @@ public class Garden {
      * invoked on the garden class.
      */
     public int totalHolesDugByNewton() {
-        return 0;
+
+        return holesDug;
     }
     
     public int totalHolesSeededByBenjamin() {
-        return 0;
+
+        return seedsPlanted;
     }
     
     public int totalHolesFilledByMary() {
-        return 0;
+
+        return holesDug - unfilledHoles;
     }
     
     public int getUnseededHoles() {
