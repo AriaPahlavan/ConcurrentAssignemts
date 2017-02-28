@@ -40,6 +40,7 @@ public class Client {
             length = buffer.length;
             spacket = new DatagramPacket(buffer, length, ia, udpPort);
 
+
             if (tokens[0].equals("setmode")) {
                 // TODO: set the mode of communication for sending commands to the server
                 // and display the name of the protocol that will be used in futures
@@ -53,7 +54,8 @@ public class Client {
                             break;
                     }
                 }
-                curMode = tokens[1].toUpperCase();
+                curMode = tokens[1];
+                System.out.println(curMode);
                 if(curMode.toUpperCase().equals("U")){
                     System.out.println("Protocol for Communication: UDP");
                 }
@@ -113,6 +115,7 @@ public class Client {
             } else {
                 System.out.println("ERROR: No such command");
             }
+
             System.out.println("");
             System.out.println("Enter command: ");
         }
@@ -120,6 +123,7 @@ public class Client {
 
     static void processUDP(DatagramPacket sPacket) throws IOException {
         System.out.println("processing UDP");
+
         int rlength = 1000;
         byte[] rBuffer = new byte[rlength];
         DatagramPacket rPacket;
@@ -133,6 +137,7 @@ public class Client {
 
     static void processTCP(String s, int port) throws IOException {
         System.out.println("processing TCP");
+
         StringBuilder input = new StringBuilder();
         Socket tSocket = new Socket("localhost",port);
         PrintWriter out = new PrintWriter(tSocket.getOutputStream());
@@ -145,7 +150,7 @@ public class Client {
             input.append(line);
             input.append('\n');
         }
-        tSocket.close();
+        //tSocket.close();
 
     }
 }
