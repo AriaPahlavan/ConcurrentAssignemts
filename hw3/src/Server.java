@@ -4,16 +4,27 @@ import java.net.DatagramSocket;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class Server {
 
-    static Map<String, Integer> Inventory = new HashMap<>();
+    static Map<String, Integer> Inventory = new ConcurrentHashMap<>();
     static List<User> users = new ArrayList<>();
     static List<Order> allOrders = new ArrayList<>();
     static int orderID = 1;
     static final String DEFAULT_MODE = "U";
     static String curMode = DEFAULT_MODE;
-    public static void main (String[] args) throws IOException {
+
+    DatagramPacket datapacket;
+    DatagramSocket uSocket;
+
+    public Server(DatagramPacket datagramPacket, DatagramSocket uSocket) {
+        this.datapacket = datagramPacket;
+        this.uSocket = uSocket;
+    }
+
+    public static void main(String[] args) throws IOException {
 
         int tcpPort;
         int udpPort;
@@ -37,61 +48,52 @@ public class Server {
         File f = new File(fileName);
         Scanner s = null;
 
-        try{
+        try {
             s = new Scanner(f);
-            while(s.hasNext()){
-                Inventory.put(s.next(),s.nextInt());
+            while (s.hasNext()) {
+                Inventory.put(s.next(), s.nextInt());
             }
-        } catch(FileNotFoundException e){
+        } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-
 
 
         // TODO: handle request from clients
         DatagramSocket uSocket = new DatagramSocket(udpPort);
         ServerSocket tSocket = new ServerSocket(tcpPort);
         byte[] buf = new byte[1000];
-        while(true){
+        while (true) {
             String request = "";
             String response = "";
-            switch(curMode){
+            switch (curMode) {
                 case "U":
                     System.out.println("processing UDP");
                     datapacket = new DatagramPacket(buf, buf.length);
                     uSocket.receive(datapacket);
-                    request = new String(datapacket.getData(), 0, datapacket.getLength());
-                    response = processReq(request);
-                    System.out.println(response);
-                    DatagramPacket responsePacket = new DatagramPacket(
-                            response.getBytes(),
-                            response.length(),
-                            datapacket.getAddress(),
-                            datapacket.getPort());
 
-                    uSocket.send(responsePacket);
+                    Server server = new Server(datapacket, uSocket);
+                    Thread t = new Thread(server.processUDP);
+                    t.run();
                     break;
                 case "T":
                     System.out.println("processing TCP");
-                    try{
-                        while(true){
+                    try {
+                        while (true) {
                             Socket clientSocket = tSocket.accept();
-                            try{
+                            try {
                                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
                                 BufferedReader in = new BufferedReader(new InputStreamReader((clientSocket.getInputStream())));
                                 request = in.readLine();
                                 response = processReq(request);
                                 String[] responseSplit = response.split("\n");
-                                for(int i=0; i<responseSplit.length; i++) {
+                                for (int i = 0; i < responseSplit.length; i++) {
                                     out.println(responseSplit[i]);
                                 }
-                            }
-                            finally{
+                            } finally {
                                 clientSocket.close();
                             }
                         }
-                    }
-                    finally{
+                    } finally {
                         tSocket.close();
                         break;
                     }
@@ -99,19 +101,55 @@ public class Server {
             }
 
 
-
         }
 
     }
 
+    Runnable processUDP = () -> {
+        String request;
+        String response;
+        request = new String(datapacket.getData(), 0, datapacket.getLength());
+        try {
+            response = processReq(request);
+
+            System.out.println(response);
+
+            DatagramPacket responsePacket = new DatagramPacket(
+                    response.getBytes(),
+                    response.length(),
+                    datapacket.getAddress(),
+                    datapacket.getPort());
+
+            uSocket.send(responsePacket);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    };
+
+    /**
+     * private static void processUDP(DatagramPacket datapacket, DatagramSocket uSocket) throws IOException {
+     * String request;
+     * String response;
+     * request = new String(datapacket.getData(), 0, datapacket.getLength());
+     * response = processReq(request);
+     * System.out.println(response);
+     * DatagramPacket responsePacket = new DatagramPacket(
+     * response.getBytes(),
+     * response.length(),
+     * datapacket.getAddress(),
+     * datapacket.getPort());
+     * <p>
+     * uSocket.send(responsePacket);
+     * }
+     */
 
     static String processReq(String req) throws IOException {
         String[] tokens = req.split(" ");
         String result = "result";
-        switch(tokens[0]){
+        switch (tokens[0]) {
             case "setmode":
                 curMode = tokens[1];
-                result = "changed server mode to " +curMode;
+                result = "changed server mode to " + curMode;
                 break;
             case "purchase":
                 String name = tokens[1];
@@ -139,13 +177,17 @@ public class Server {
 
     private static String listAllProducts() {
         String result = "";
-        Iterator it = Inventory.entrySet().iterator();
+        Iterator it = getInventoryIterator();
         while (it.hasNext()) {
-            Map.Entry pair = (Map.Entry)it.next();
+            Map.Entry pair = (Map.Entry) it.next();
             result = result + pair.getKey() + " " + pair.getValue() + "\n";
         }
 
         return result;
+    }
+
+    private synchronized static Iterator<Map.Entry<String, Integer>> getInventoryIterator() {
+        return Inventory.entrySet().iterator();
     }
 
     private static String findUserOrders(String userName) {
@@ -153,28 +195,27 @@ public class Server {
         User user = new User(userName);
         User foundUser;
         int userIndex;
-        if(users.contains(user)){
+        if (users.contains(user)) {
             userIndex = users.indexOf(user);
             foundUser = users.get(userIndex);
-            for(int i=0; i<foundUser.orders.size(); i++){
+            for (int i = 0; i < foundUser.orders.size(); i++) {
                 Order order = foundUser.orders.get(i);
                 Integer orderID = order.getOrderID();
                 String productName = order.getProduct();
                 Integer quantity = order.getQuantity();
-                result = result+orderID+" "+productName+" "+quantity+"\n";
+                result = result + orderID + " " + productName + " " + quantity + "\n";
             }
-        }
-        else{
-            result = "No order found for "+userName;
+        } else {
+            result = "No order found for " + userName;
         }
         return result;
 
     }
 
-    private static String cancelOrder(Integer id) {
+    private synchronized static String cancelOrder(Integer id) {
         String result = "";
-        for (int i = 0; i < allOrders.size() ; i++) {
-            if(allOrders.get(i).getOrderID() == id){
+        for (int i = 0; i < allOrders.size(); i++) {
+            if (allOrders.get(i).getOrderID() == id) {
                 //TODO: lock?
                 String name = allOrders.get(i).getName();
                 String product = allOrders.get(i).getProduct();
@@ -182,27 +223,25 @@ public class Server {
                 //TODO: Lock
                 User user = getUser(name);
                 user.removeOrder(id);
-                Inventory.put(product, Inventory.get(product)+quantity);
+                Inventory.put(product, Inventory.get(product) + quantity);
                 allOrders.remove(i);
-                result = "Order "+id+" is canceled";
+                result = "Order " + id + " is canceled";
                 return result;
             }
         }
 
-        result = id+" not found, no such order";
+        result = id + " not found, no such order";
         return result;
     }
 
-    private static String tryPurchase(String name, String product, Integer quantity) {
+    private synchronized static String tryPurchase(String name, String product, Integer quantity) {
         String result = "";
         Integer qtyAvail = Inventory.get(product);
-        if(qtyAvail == null){
+        if (qtyAvail == null) {
             result = "Not Available - We do not sell this product";
-        }
-        else if(qtyAvail < quantity){
+        } else if (qtyAvail < quantity) {
             result = "Not Available - Not enough items";
-        }
-        else{
+        } else {
             //TODO: lock
             int id = orderID;
             orderID++;
@@ -211,9 +250,9 @@ public class Server {
             Order newOrder = new Order(name, id, product, quantity);
             users.add(user);
             allOrders.add(newOrder);
-            Inventory.put(product, Inventory.get(product)-quantity);
+            Inventory.put(product, Inventory.get(product) - quantity);
 
-            result = "Your order has been placed, " +id+" "+name+" "+product+" "+quantity;
+            result = "Your order has been placed, " + id + " " + name + " " + product + " " + quantity;
         }
 
         return result;
@@ -222,7 +261,7 @@ public class Server {
     private static User getUser(String name) {
         User user = new User(name);
         int userIndex;
-        if(users.contains(user)){
+        if (users.contains(user)) {
             userIndex = users.indexOf(user);
             user = users.get(userIndex);
         }
@@ -230,7 +269,7 @@ public class Server {
     }
 
 
-    static class User{
+    static class User {
         String name = "";
         List<Order> orders = new ArrayList<>();
 
@@ -238,17 +277,15 @@ public class Server {
             this.name = name;
         }
 
-        void createOrder(int id, String product, int q){
+        void createOrder(int id, String product, int q) {
             Order order = new Order(name, id, product, q);
             orders.add(order);
         }
 
-        void removeOrder(int id){
-            for(Order order : orders){
-                if(order.getOrderID() == id){
-                    orders.remove(order);
-                }
-            }
+        void removeOrder(int id) {
+            orders = orders.parallelStream()
+                    .filter(order -> order.getOrderID() != id)
+                    .collect(Collectors.toList());
         }
 
         @Override
@@ -267,16 +304,15 @@ public class Server {
         }
 
 
-
     }
 
-    static class Order{
+    static class Order {
         String name;
         int orderID;
         String product;
         int quantity;
 
-        Order(String name, int id, String product, int q){
+        Order(String name, int id, String product, int q) {
             this.name = name;
             this.orderID = id;
             this.product = product;
