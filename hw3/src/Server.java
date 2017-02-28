@@ -1,17 +1,11 @@
-import input.Order;
-import input.User;
-
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.*;
 
 public class Server {
 
-    static Map<String, Integer> Inventory = new HashMap<>();
+    static Map<String, Integer> Inventory = new ConcurrentHashMap<>();
     static List<User> users = new ArrayList<>();
     static List<Order> allOrders = new ArrayList<>();
     static int orderID = 1;
@@ -61,18 +55,16 @@ public class Server {
         while(true){
             String request = "";
             String response = "";
-            System.out.println(curMode);
-            uSocket.setSoTimeout(1000);
-            tSocket.setSoTimeout(1000);
+//            System.out.println(curMode);
+            uSocket.setSoTimeout(100);
+            tSocket.setSoTimeout(100);
             try {
                 switch (curMode) {
                     case "U":
-                        System.out.println("processing UDP");
+//                        System.out.println("processing UDP");
                         datapacket = new DatagramPacket(buf, buf.length);
-                        // uSocket.setSoTimeout(2000);
                         uSocket.receive(datapacket);
                         request = new String(datapacket.getData(), 0, datapacket.getLength());
-                        //create new thread command
                         Callable<String> cmdUDP = new Command(request);
                         Future<String> respUDP = pool.submit(cmdUDP);
                         response = respUDP.get();
@@ -85,11 +77,11 @@ public class Server {
                         uSocket.send(responsePacket);
                         break;
                     case "T":
-                        System.out.println("processing TCP");
+//                        System.out.println("processing TCP");
                         curMode = "U";
                         try {
                             Socket clientSocket = tSocket.accept();
-                            clientSocket.setSoTimeout(1000);
+                            clientSocket.setSoTimeout(100);
                             try {
                                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
                                 InputStream input = clientSocket.getInputStream();
@@ -118,7 +110,6 @@ public class Server {
                 }
             }
             catch(SocketTimeoutException e){
-                System.out.println("timeout caught");
                 if(curMode == "U"){
                     curMode = "T";
                 }
