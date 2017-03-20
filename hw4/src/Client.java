@@ -70,7 +70,7 @@ public class Client {
 				continue;
 			}
 
-			clientSocket.setSoTimeout(CONNECTION_TIMEOUT);
+//			clientSocket.setSoTimeout(CONNECTION_TIMEOUT);
 
 			socket_out = new PrintWriter(clientSocket.getOutputStream());
 			socket_in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));

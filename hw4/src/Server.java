@@ -12,19 +12,18 @@ localhost:8001
 localhost:8002
 */
 
-	final static String ACK = "[ACK]";
-	final static String CMD = "[CMD]";
+	final static String ACK 		= "[ACK]";
+	final static String CMD 		= "[CMD]";
 	private final static String REQ = "[REQ]";
 	private final static String REL = "[REL]";
-
-
 
 	static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
 	static List<ServerInfo> 			waitingServers	= new ArrayList<>();
 	static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
     static List<User> 					users 			= new ArrayList<>();
 	static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
-    static int orderID = 1;
+	static Queue<ClientInfo> waitingClients = new ConcurrentLinkedDeque<>();
+	static int orderID = 1;
 
 	public static void main (String[] args) throws Exception {
 //		System.out.println("Enter <server-id> <n> <inventory-path>");
@@ -39,7 +38,6 @@ localhost:8002
 		File f 					= new File(inventoryPath);
 		int numAck 				= 0;
 		int myPort 				= -1;
-		String clientCommand = "";
 		Scanner file_sc;
 
 		for (int id = 1; id <= numServer; id++) {
@@ -98,7 +96,7 @@ localhost:8002
 						client_out.println(ack(myID, request));        //send ack to client
 
 						//send request to all other servers
-						long myTimeStamp = System.currentTimeMillis() % 1000;
+						long myTimeStamp = System.currentTimeMillis() % 1000000;
 						myInfo.setTimeStamp(myTimeStamp);
 
 						String reqMsg = REQ + " " + myInfo.getPort()
@@ -110,16 +108,20 @@ localhost:8002
 						notifyOtherServers(myID, reqMsg);
 
 						//insert self into waiting servers
-						clientCommand = request;
 						myInfo.setTimeStamp(myTimeStamp);
 						servers.put(myID, myInfo);
 						waitingServers.add(myInfo);
 
+						//insert client command and output stream in a list
+						ClientInfo newClient = new ClientInfo(client_out, request);
+						waitingClients.add(newClient);
+
 						numAck = 0;
+
 						break;
 					case REQ:
 						System.out.println("In REQ: ");
-						Arrays.stream(reqTok).forEach(s -> System.out.println(s +" "));
+						Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
 						Integer receivedPort = Integer.parseInt(reqTok[1]);
 						String receivedHost = reqTok[2];
 						receivedID = Integer.parseInt(reqTok[3]);
@@ -149,16 +151,24 @@ localhost:8002
 
 							if (firstServerInline.equals(myInfo)) {
 								//enter CS and process command
-								response = processCommand(clientCommand);
+								ClientInfo nextClient = waitingClients.poll();
 
-								client_out.println(response);
-								client_out.flush();
+								if (nextClient == null) break;  //break the switch loop
+
+								response = processCommand(nextClient.getCommand());
+
+								//debug{
+								System.out.println("response to client: " + response);
+								//}end
+
+								nextClient.getOutputStream().println(response);
+								nextClient.getOutputStream().flush();
 
 								//release from CS
 								//send request to all other servers
 								waitingServers.remove(myInfo);
 
-								String relMsg = REL + " " + myID + " " + clientCommand;
+								String relMsg = REL + " " + myID + " " + nextClient.getCommand();
 								notifyOtherServers(myID, relMsg);
 							}
 						}
@@ -182,16 +192,20 @@ localhost:8002
 
 							if (firstServerInline.equals(myInfo)) {
 								//enter CS and process command
-								response = processCommand(clientCommand);
+								ClientInfo nextClient = waitingClients.poll();
 
-								client_out.println(response);
-								client_out.flush();
+								if (nextClient == null) break;  //break the switch loop
+
+								response = processCommand(nextClient.getCommand());
+
+								nextClient.getOutputStream().println(response);
+								nextClient.getOutputStream().flush();
 
 								//release from CS
 								//send request to all other servers
 								waitingServers.remove(myInfo);
 
-								String relMsg = REL + " " + myInfo.getID() + " " + clientCommand;
+								String relMsg = REL + " " + myInfo.getID() + " " + nextClient.getCommand();
 								notifyOtherServers(myInfo.getID(), relMsg);
 							}
 						}
