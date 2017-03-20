@@ -38,6 +38,7 @@ localhost:8000
 		File f 					= new File(inventoryPath);
 		int numAck 				= 0;
 		int myPort 				= -1;
+		String clientCommand = "";
 		Scanner file_sc;
 
 		for (int id = 1; id <= numServer; id++) {
@@ -99,6 +100,7 @@ localhost:8000
 						notifyOtherServers(myID, reqMsg);
 
 						//insert self into waiting servers
+						clientCommand = request;
 						myInfo.setTimeStamp(myTimeStamp);
 						servers.put(myID, myInfo);
 						waitingServers.add(myInfo);
@@ -126,25 +128,25 @@ localhost:8000
 					case ACK:
 						numAck = numAck + 1;
 
-						//TODO: if received all acknowledgements and timestamp is smallest -> enterCS
+						//if received all acknowledgements and timestamp is smallest -> enterCS
 						if (numAck == numServer - 1) {
-							//TODO: need to add check for smallest timeStamp
 
+							//check for smallest timeStamp
 							ServerInfo firstServerInline = waitingServers.stream()
 									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
 
 							if (firstServerInline.equals(myInfo)) {
 								//enter CS and process command
-								response = processCommand(request);
+								response = processCommand(clientCommand);
 
 								client_out.println(response);
-								client_out.flush();        //TODO it's already autoFlush-enabled?
+								client_out.flush();
 
 								//release from CS
 								//send request to all other servers
 								waitingServers.remove(myInfo);
 
-								String relMsg = REL + " " + myID;
+								String relMsg = REL + " " + myID + " " + clientCommand;
 								notifyOtherServers(myID, relMsg);
 							}
 						}
@@ -152,29 +154,32 @@ localhost:8000
 					case REL:
 						receivedID = Integer.parseInt(reqTok[1]);
 
-						//TODO: delete the request from waiting servers
+						//delete the request from waiting servers
 						ServerInfo releasedServer = servers.get(receivedID);
 						waitingServers.remove(releasedServer);
 
-						//TODO: if received all acknowledgements and timestamp is smallest -> enterCS and then release
-						if (numAck == numServer - 1) {
-							//TODO: need to add check for smallest timeStamp
+						//if other server modified inventory or orders, perform the same action
+						processCommand(reqTok[2]);
 
+						//if received all acknowledgements and timestamp is smallest -> enterCS and then release
+						if (numAck == numServer - 1) {
+
+							//check for smallest timeStamp
 							ServerInfo firstServerInline = waitingServers.stream()
 									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
 
 							if (firstServerInline.equals(myInfo)) {
 								//enter CS and process command
-								response = processCommand(request);
+								response = processCommand(clientCommand);
 
 								client_out.println(response);
-								client_out.flush();        //TODO it's already autoFlush-enabled?
+								client_out.flush();
 
 								//release from CS
 								//send request to all other servers
 								waitingServers.remove(myInfo);
 
-								String relMsg = REL + " " + myInfo.getID();
+								String relMsg = REL + " " + myInfo.getID() + " " + clientCommand;
 								notifyOtherServers(myInfo.getID(), relMsg);
 							}
 						}
@@ -336,68 +341,4 @@ localhost:8000
 
 		return user;
 	}
-
-//    public static void main (String[] args) throws Exception {
-//        ExecutorService pool 	= Executors.newCachedThreadPool();
-//        Scanner system_in 		= new Scanner(System.in);
-//		String inventoryPath 	= system_in.next();
-//		File f 					= new File(inventoryPath);
-//		int myID 				= system_in.nextInt();
-//		int numServer 			= system_in.nextInt();
-//		int port = 2;
-//		Scanner file_sc;
-//
-//		System.out.println("[DEBUG] my id: " + myID);
-//		System.out.println("[DEBUG] numServer: " + numServer);
-//		System.out.println("[DEBUG] inventory path: " + inventoryPath);
-//
-//		for (int i = 0; i < numServer; i++) {
-//			// TODO: parse inputs to get the ips and ports of servers
-//			String str = system_in.next();
-//			System.out.println("address for server " + i + ": " + str);
-//		}
-//
-//        try{
-//            file_sc = new Scanner(f);
-//
-//            while(file_sc.hasNext()){
-//                Inventory.put(file_sc.next(), file_sc.nextInt());
-//            }
-//
-//        } catch(FileNotFoundException e){
-//			System.out.println("[ERROR] File Not Found.");
-//		}
-//
-//
-//
-//        // TODO: handle request from clients
-//        ServerSocket serverSocket = new ServerSocket(port);
-//        while(true){
-//            String request;
-//            String response;
-//            serverSocket.setSoTimeout(100);
-//			Socket clientSocket = serverSocket.accept();
-//			clientSocket.setSoTimeout(100);
-//			try {
-//				PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
-//				InputStream input = clientSocket.getInputStream();
-//				BufferedReader in = new BufferedReader(new InputStreamReader((input)));
-//				request = in.readLine();
-//				Callable<String> cmdTCP = new Command(request);
-//				Future<String> respTCP = pool.submit(cmdTCP);
-//				response = respTCP.get();
-//				String[] responseSplit = response.split("\n");
-//				for (String aResponseSplit : responseSplit) {
-//					out.println(aResponseSplit);
-//				}
-//				out.flush();
-//			}
-//
-//			finally {
-//				clientSocket.close();
-//			}
-//        }
-//
-//    }
-
 }
