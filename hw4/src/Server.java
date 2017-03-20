@@ -84,8 +84,13 @@ localhost:8002
 
 				request = socket_in.readLine();
 				String[] reqTok = request.split(" ");
+
+				//debug{
 				System.out.println("before striping off the tag:");
-				Arrays.stream(reqTok).forEach(s -> System.out.println(s +" "));
+				Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
+				System.out.println();
+				//}end
+
 				request = request.substring(6);
 
 				switch (reqTok[0]) {
@@ -129,7 +134,7 @@ localhost:8002
 						//send acknowledgement
 						Socket otherSocket = new Socket(receivedHost, receivedPort);
 						PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
-						otherOut.println(ACK);
+						otherOut.println(ACK + " server " + myInfo + " received request: " + request);
 						otherOut.flush();
 						break;
 					case ACK:
