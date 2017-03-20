@@ -1,178 +1,403 @@
-/**
- * Created by Sharmistha on 3/16/2017.
- */
 import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 
-public class Server {
+import static java.lang.Thread.sleep;
 
-    static Map<Integer,ServerInfo> serverPorts = new HashMap<>();
-    static List<ServerInfo> waitingServers = new ArrayList<>();
-    static Map<String, Integer> Inventory = new HashMap<>();
-    static List<User> users = new ArrayList<>();
-    static List<Order> allOrders = new ArrayList<>();
+public class Server {
+/* Aria:
+1 1 src/input/inventory.txt
+localhost:8000
+*/
+
+	final static String ACK = "[ACK]";
+	final static String CMD = "[CMD]";
+	private final static String REQ = "[REQ]";
+	private final static String REL = "[REL]";
+
+
+
+	static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
+	static List<ServerInfo> 			waitingServers	= new ArrayList<>();
+	static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
+    static List<User> 					users 			= new ArrayList<>();
+	static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
     static int orderID = 1;
 
-    public static void main (String[] args) throws IOException, ExecutionException, InterruptedException {
+	public static void main (String[] args) throws Exception {
+//		System.out.println("Enter <server-id> <n> <inventory-path>");
+//		System.out.println("Enter <ip-address>:<port-number>");
 
-        ExecutorService pool = Executors.newCachedThreadPool();
+		//
+		//Scan inputs
+		Scanner sc 				= new Scanner(System.in);
+		int myID 				= sc.nextInt();
+		int numServer 			= sc.nextInt();
+		String inventoryPath 	= sc.next();
+		File f 					= new File(inventoryPath);
+		int numAck 				= 0;
+		int myPort 				= -1;
+		Scanner file_sc;
 
-        int numAck = 0;
-        int myPort = -1;
+		for (int id = 1; id <= numServer; id++) {
 
-        Scanner sc = new Scanner(System.in);
-        int myID = sc.nextInt();
-        int numServer = sc.nextInt();
-        String inventoryPath = sc.next();
+			String ipAndPort 		= sc.next();
+			String[] tokens 		= ipAndPort.split(":");
+			String host				= tokens[0];
+			Integer port 			= Integer.parseInt(tokens[1]);
+			ServerInfo newServer 	= new ServerInfo(id, host, port);
 
-        String currentCommand = "";
+			if (id == myID) myPort = port;
 
-        System.out.println("[DEBUG] my id: " + myID);
-        System.out.println("[DEBUG] numServer: " + numServer);
-        System.out.println("[DEBUG] inventory path: " + inventoryPath);
-        for (int i = 0; i < numServer; i++) {
-            // TODO: parse inputs to get the ips and ports of servers
-
-            String str = sc.next();
-            String[] ipPort = str.split(":");
-            if(i == myID-1){myPort = Integer.parseInt(ipPort[1]);}
-            ServerInfo newServer = new ServerInfo(i,Integer.parseInt(ipPort[1]));
-            serverPorts.put(i+1,newServer);
-            System.out.println("address for server " + i + ": " + str);
-        }
-
-        // parse the inventory file
-        File f = new File(inventoryPath);
-        Scanner scan = null;
-
-        try{
-            scan = new Scanner(f);
-            while(scan.hasNext()){
-                Inventory.put(scan.next(),scan.nextInt());
-            }
-        } catch(FileNotFoundException e){
-            e.printStackTrace();
-        }
-
-        while (true) {
-            ServerSocket tSocket = new ServerSocket(myPort);
-            String request = "";
-            String response = "";
-            try {
-                Socket receivedSocket = tSocket.accept();
-                try {
-                    PrintWriter out = new PrintWriter(receivedSocket.getOutputStream(), true);
-                    InputStream input = receivedSocket.getInputStream();
-                    BufferedReader in = new BufferedReader(new InputStreamReader((input)));
-                    request = in.readLine();
-                    String[] reqSplit = request.split(" ");
-                    if(reqSplit[0] == "request"){
-                        int receivedPort = Integer.parseInt(reqSplit[1]);
-                        int receivedID = Integer.parseInt(reqSplit[2]);
-                        long receivedTimeStamp = ((long) Integer.parseInt(reqSplit[3]));
-
-                        //insert received request into waitingServers
-                        ServerInfo otherServer = serverPorts.get(receivedID);
-                        otherServer.setTimeStamp(receivedTimeStamp);
-                        serverPorts.put(myID,otherServer);
-                        waitingServers.add(otherServer);
-
-                        //send acknowledgement
-                        String s = "acknowledgement";
-                        Socket otherSocket = new Socket("localhost",receivedPort);
-                        PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
-                        otherOut.println(s);
-                        otherOut.flush();
-
-                    }
-                    else if(reqSplit[0] == "acknowledgement"){
-                        numAck = numAck+1;
-
-                        //TODO: if received all acknowledgements and timestamp is smallest -> enterCS
-                        if(numAck == numServer - 1) { //TODO: need to add check for smallest timeStamp
-                            //enter CS and process command
-                            Callable<String> cmdTCP = new Command(currentCommand);
-                            Future<String> respTCP = pool.submit(cmdTCP);
-                            response = respTCP.get();
-                            String[] responseSplit = response.split("\n");
-                            Socket clientSocket = new Socket("localhost",serverPorts.get(myID).getPort());
-                            PrintWriter clientOut = new PrintWriter(clientSocket.getOutputStream());
-                            for (int i = 0; i < responseSplit.length; i++) {
-                                clientOut.println(responseSplit[i]);
-                            }
-                            clientOut.flush();
-
-                            //release from CS
-                                //TODO: remove self from waiting servers
-                                //send release to all other servers
-                            //send request to all other servers
-                            String s = "release "+myID;
-                            for(int i=0; i<serverPorts.size(); i++){
-                                Socket otherSocket = new Socket("localhost",serverPorts.get(i+1).getPort());
-                                PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
-                                otherOut.println(s);
-                                otherOut.flush();
-                            }
-                        }
-
-                    }
-                    else if(reqSplit[0] == "release"){
-                        int receivedID = Integer.parseInt(reqSplit[1]);
-                        //TODO: delete the request from waiting servers
-
-                        //TODO: if received all acknowledgements and timestamp is smallest -> enterCS and then release
+			servers.put(id, newServer);
+		}
 
 
-                    }
-                    else if(reqSplit[0] == "command"){
-                        //send request to all other servers
-                        long myTimeStamp = System.currentTimeMillis() % 1000;
-                        String s = "request " + myPort + " " + myID + " " + myTimeStamp;
-                        for(int i=0; i<serverPorts.size(); i++){
-                            Socket otherSocket = new Socket("localhost",serverPorts.get(i+1).getPort());
-                            PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
-                            otherOut.println(s);
-                            otherOut.flush();
-                        }
+		//fill the inventory
+		try{
+			file_sc = new Scanner(f);
 
-                        //insert self into waiting servers
-                        ServerInfo myServer = serverPorts.get(myID);
-                        myServer.setTimeStamp(myTimeStamp);
-                        serverPorts.put(myID,myServer);
-                        waitingServers.add(myServer);
+			while(file_sc.hasNext()){
+				Inventory.put(file_sc.next(), file_sc.nextInt());
+			}
 
-                        //set number of acknowledgements to 0
-                        numAck = 0;
+		} catch(FileNotFoundException e){
+			System.out.println("[ERROR] File Not Found.");
+		}
 
-                        //save command from client
-                        currentCommand = "";
-                        for(int i=1; i<reqSplit.length; i++){
-                            currentCommand = currentCommand + reqSplit[i] + " ";
-                        }
 
-                    }
-                    else{
-                        System.out.println("error receiving requests");
-                    }
-                }
+		ServerSocket serverSocket = new ServerSocket(myPort);
 
-                finally {
-                    receivedSocket.close();
-                }
+		while(true){
+			String request, response;
+			Integer receivedID;
+			ServerInfo myInfo = servers.get(myID);
 
-            } finally {
-                //tSocket.close();
-                break;
-            }
+			try (Socket externalSocket = serverSocket.accept()) {
 
-        }
-        // TODO: start server socket to communicate with clients and other servers
+				PrintWriter client_out = new PrintWriter(externalSocket.getOutputStream(), true);
+				InputStream input = externalSocket.getInputStream();
+				BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
 
-        // TODO: parse the inventory file
+				request = socket_in.readLine();
+				String[] reqTok = request.split(" ");
+				request = request.substring(6);
 
-        // TODO: handle request from client
-    }
+				switch (reqTok[0]) {
+					case CMD:
+						client_out.println(ack(myID, request));        //send ack to client
+
+						//send request to all other servers
+						long myTimeStamp = System.currentTimeMillis() % 1000;
+
+						String reqMsg = REQ + " " + myInfo.getPort()
+											+ " " + myInfo.getHost()
+											+ " " + myInfo.getID()
+											+ " " + myInfo.getTimeStamp();
+
+						notifyOtherServers(myID, reqMsg);
+
+						//insert self into waiting servers
+						myInfo.setTimeStamp(myTimeStamp);
+						servers.put(myID, myInfo);
+						waitingServers.add(myInfo);
+
+						numAck = 0;
+						break;
+					case REQ:
+						Integer receivedPort = Integer.parseInt(reqTok[1]);
+						String receivedHost = reqTok[2];
+						receivedID = Integer.parseInt(reqTok[3]);
+						Long receivedTimeStamp = Long.parseLong(reqTok[4]);
+
+						//insert received request into waitingServers
+						ServerInfo otherServer = servers.get(receivedID);
+						otherServer.setTimeStamp(receivedTimeStamp);
+						servers.put(myID, otherServer);
+						waitingServers.add(otherServer);
+
+						//send acknowledgement
+						Socket otherSocket = new Socket(receivedHost, receivedPort);
+						PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
+						otherOut.println(ACK);
+						otherOut.flush();
+						break;
+					case ACK:
+						numAck = numAck + 1;
+
+						//TODO: if received all acknowledgements and timestamp is smallest -> enterCS
+						if (numAck == numServer - 1) {
+							//TODO: need to add check for smallest timeStamp
+
+							ServerInfo firstServerInline = waitingServers.stream()
+									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
+
+							if (firstServerInline.equals(myInfo)) {
+								//enter CS and process command
+								response = processCommand(request);
+
+								client_out.println(response);
+								client_out.flush();        //TODO it's already autoFlush-enabled?
+
+								//release from CS
+								//send request to all other servers
+								waitingServers.remove(myInfo);
+
+								String relMsg = REL + " " + myID;
+								notifyOtherServers(myID, relMsg);
+							}
+						}
+						break;
+					case REL:
+						receivedID = Integer.parseInt(reqTok[1]);
+
+						//TODO: delete the request from waiting servers
+						ServerInfo releasedServer = servers.get(receivedID);
+						waitingServers.remove(releasedServer);
+
+						//TODO: if received all acknowledgements and timestamp is smallest -> enterCS and then release
+						if (numAck == numServer - 1) {
+							//TODO: need to add check for smallest timeStamp
+
+							ServerInfo firstServerInline = waitingServers.stream()
+									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
+
+							if (firstServerInline.equals(myInfo)) {
+								//enter CS and process command
+								response = processCommand(request);
+
+								client_out.println(response);
+								client_out.flush();        //TODO it's already autoFlush-enabled?
+
+								//release from CS
+								//send request to all other servers
+								waitingServers.remove(myInfo);
+
+								String relMsg = REL + " " + myInfo.getID();
+								notifyOtherServers(myInfo.getID(), relMsg);
+							}
+						}
+						break;
+					default:
+						System.out.println("[ERROR] Invalid message received.");
+						break;
+				}
+			}
+		}
+
+	}
+
+	private static void notifyOtherServers(int myID, String msg) throws IOException {
+		for (int id = 1; id <= servers.size(); id++) {
+			if (id == myID) continue;
+
+			ServerInfo otherServer = servers.get(id);
+			Socket otherSocket = new Socket(otherServer.getHost(), otherServer.getPort());
+			PrintWriter servers_out = new PrintWriter(otherSocket.getOutputStream());
+
+			servers_out.println(msg);
+			servers_out.flush();
+		}
+	}
+
+	private static String ack(int myID, String request) {
+		return (ACK + " " +servers.get(myID).toString() + " received the request: " + request);
+	}
+
+	private static String processCommand(String req) throws IOException, InterruptedException {
+		String[] tokens = req.split(" ");
+		String result = "";
+		switch (tokens[0]) {
+			case "purchase":
+				String name = tokens[1];
+				String product = tokens[2];
+				Integer quantity = new Integer(tokens[3]);
+
+				result = tryPurchase(name, product, quantity);
+				break;
+			case "cancel":
+				Integer id = new Integer(tokens[1]);
+				result = cancelOrder(id);
+				break;
+
+			case "search":
+				String UserName = tokens[1];
+				result = findUserOrders(UserName);
+				break;
+
+			case "list":
+				result = listAllProducts();
+				break;
+		}
+		return result;
+	}
+
+	private static String listAllProducts() {
+		String result = "";
+		Iterator it = getInventoryIterator();
+		while (it.hasNext()) {
+			Map.Entry pair = (Map.Entry) it.next();
+			result = result + pair.getKey() + " " + pair.getValue() + "\n";
+		}
+
+		return result;
+	}
+
+	private static synchronized Iterator<Map.Entry<String, Integer>> getInventoryIterator() {
+		return Inventory.entrySet().iterator();
+	}
+
+	private static synchronized String findUserOrders(String userName) {
+		String result = "";
+		User user = new User(userName);
+		User foundUser;
+		int userIndex;
+		if (users.contains(user)) {
+			userIndex = users.indexOf(user);
+			foundUser = users.get(userIndex);
+			for (int i = 0; i < foundUser.orders.size(); i++) {
+				Order order = foundUser.orders.get(i);
+				Integer orderID = order.getOrderID();
+				String productName = order.getProduct();
+				Integer quantity = order.getQuantity();
+				result = result + orderID + " " + productName + " " + quantity + "\n";
+			}
+		} else {
+			result = "No order found for " + userName;
+		}
+		return result;
+
+	}
+
+	private static synchronized String cancelOrder(Integer id) {
+		String result;
+		OrderUserPair orderUserPair;
+
+		if ( (orderUserPair = allOrders.get(id)) != null) {
+			Order order = orderUserPair.getOrder();
+
+			String product = order.getProduct();
+			int quantity = order.getQuantity();
+
+			User user = orderUserPair.getUser();
+			if (user.removeOrder(id))
+				users.remove(user);
+
+			Inventory.put(product, Inventory.get(product) + quantity);
+			allOrders.remove(id);
+
+			result = "Order " + id + " is canceled";
+		}
+		else result = id + " not found, no such order";
+
+		return result;
+	}
+
+	private static synchronized String tryPurchase(String name, String product, Integer quantity) {
+		String result = "";
+		Integer qtyAvail = Inventory.get(product);
+
+		if (quantity <= 0) {
+			result = "Invalid quantity";
+
+		}
+		else if (qtyAvail == null) {
+			result = "Not Available - We do not sell this product";
+		}
+		else if (qtyAvail < quantity) {
+			result = "Not Available - Not enough items";
+		}
+		else {
+			int id = orderID;
+			orderID++;
+			User user 		= getUser(name);
+			Order newOrder 	= user.createOrder(id, product, quantity);
+
+			allOrders.put(id, new OrderUserPair(newOrder, user));
+			Inventory.put(product, Inventory.get(product) - quantity);
+
+			result = "Your order has been placed, " + id + " " + name + " " + product + " " + quantity;
+		}
+
+		return result;
+	}
+
+	private static synchronized User getUser(String name) {
+		User user = new User(name);
+		int userIndex;
+		if (users.contains(user)) {
+			userIndex = users.indexOf(user);
+			user = users.get(userIndex);
+
+		} else {
+			users.add(user);
+		}
+
+		return user;
+	}
+
+//    public static void main (String[] args) throws Exception {
+//        ExecutorService pool 	= Executors.newCachedThreadPool();
+//        Scanner system_in 		= new Scanner(System.in);
+//		String inventoryPath 	= system_in.next();
+//		File f 					= new File(inventoryPath);
+//		int myID 				= system_in.nextInt();
+//		int numServer 			= system_in.nextInt();
+//		int port = 2;
+//		Scanner file_sc;
+//
+//		System.out.println("[DEBUG] my id: " + myID);
+//		System.out.println("[DEBUG] numServer: " + numServer);
+//		System.out.println("[DEBUG] inventory path: " + inventoryPath);
+//
+//		for (int i = 0; i < numServer; i++) {
+//			// TODO: parse inputs to get the ips and ports of servers
+//			String str = system_in.next();
+//			System.out.println("address for server " + i + ": " + str);
+//		}
+//
+//        try{
+//            file_sc = new Scanner(f);
+//
+//            while(file_sc.hasNext()){
+//                Inventory.put(file_sc.next(), file_sc.nextInt());
+//            }
+//
+//        } catch(FileNotFoundException e){
+//			System.out.println("[ERROR] File Not Found.");
+//		}
+//
+//
+//
+//        // TODO: handle request from clients
+//        ServerSocket serverSocket = new ServerSocket(port);
+//        while(true){
+//            String request;
+//            String response;
+//            serverSocket.setSoTimeout(100);
+//			Socket clientSocket = serverSocket.accept();
+//			clientSocket.setSoTimeout(100);
+//			try {
+//				PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+//				InputStream input = clientSocket.getInputStream();
+//				BufferedReader in = new BufferedReader(new InputStreamReader((input)));
+//				request = in.readLine();
+//				Callable<String> cmdTCP = new Command(request);
+//				Future<String> respTCP = pool.submit(cmdTCP);
+//				response = respTCP.get();
+//				String[] responseSplit = response.split("\n");
+//				for (String aResponseSplit : responseSplit) {
+//					out.println(aResponseSplit);
+//				}
+//				out.flush();
+//			}
+//
+//			finally {
+//				clientSocket.close();
+//			}
+//        }
+//
+//    }
+
 }

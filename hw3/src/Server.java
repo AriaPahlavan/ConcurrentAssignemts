@@ -4,10 +4,16 @@ import input.User;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+<<<<<<< Updated upstream
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+=======
+import java.util.concurrent.*;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
+>>>>>>> Stashed changes
 
 public class Server {
 
@@ -41,7 +47,7 @@ public class Server {
 
         // parse the inventory file
         File f = new File(fileName);
-        Scanner s = null;
+        Scanner s;
 
         try{
             s = new Scanner(f);
@@ -112,14 +118,18 @@ public class Server {
 
                         } finally {
                             //tSocket.close();
-                            break;
                         }
 
+                        break;
                 }
             }
             catch(SocketTimeoutException e){
+<<<<<<< Updated upstream
                 System.out.println("timeout caught");
                 if(curMode == "U"){
+=======
+                if(curMode.equals("U")){
+>>>>>>> Stashed changes
                     curMode = "T";
                 }
                 else {

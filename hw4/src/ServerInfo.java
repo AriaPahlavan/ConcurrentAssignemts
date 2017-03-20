@@ -1,29 +1,70 @@
 /**
- * Created by Sharmistha on 3/18/2017.
+ * Created by aria on 3/18/17.
  */
-public class ServerInfo {
-    long timeStamp;
-    int port;
-    int serverID;
+class ServerInfo {
+	private Pair<String, Integer> pair;
+	Long timeStamp;
+	Integer port;
+	Integer serverID;
+	boolean isCrashed = false;
 
-    public ServerInfo(int id, int port){
-        this.serverID = id;
-        this.port = port;
-    }
+	public ServerInfo() {}
 
-    public void setTimeStamp(long timeStamp) {
-        this.timeStamp = timeStamp;
-    }
+	public ServerInfo(int serverID, String IP, Integer port) {
+		this.pair = new Pair<>(IP, port);
+		this.serverID = serverID;
+	}
 
-    public int getServerID() {
-        return serverID;
-    }
+	public ServerInfo(String IP, Integer port) {
+		this.pair = new Pair<>(IP, port);
+	}
 
-    public long getTimeStamp() {
-        return timeStamp;
-    }
+	public Long getTimeStamp() {
+		return timeStamp;
+	}
 
-    public int getPort() {
-        return port;
-    }
+	public void setTimeStamp(long timeStamp) {
+		this.timeStamp = timeStamp;
+	}
+
+	public Integer getID() {
+		return serverID;
+	}
+
+	String getHost() {
+		return pair.getLeft();
+	}
+
+	Integer getPort() {
+		return pair.getRight();
+	}
+
+	public boolean isAvail() {
+		return !isCrashed;
+	}
+
+	public void killServer() {
+		isCrashed = true;
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (!(o instanceof ServerInfo)) return false;
+
+		ServerInfo that = (ServerInfo) o;
+
+		return pair != null ? pair.equals(that.pair) : that.pair == null;
+	}
+
+	@Override
+	public int hashCode() {
+		return pair != null ? pair.hashCode() : 0;
+	}
+
+	@Override
+	public String toString() {
+		return "<" + pair.getLeft() + ", " + pair.getRight() + ">";
+//				+ " is " + (isCrashed ? "" : "not") + " crashed.";
+	}
 }
