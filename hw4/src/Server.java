@@ -7,8 +7,9 @@ import static java.lang.Thread.sleep;
 
 public class Server {
 /* Aria:
-1 1 src/input/inventory.txt
-localhost:8000
+1 2 src/input/inventory.txt
+localhost:8001
+localhost:8002
 */
 
 	final static String ACK = "[ACK]";
@@ -83,6 +84,8 @@ localhost:8000
 
 				request = socket_in.readLine();
 				String[] reqTok = request.split(" ");
+				System.out.println("before striping off the tag:");
+				Arrays.stream(reqTok).forEach(s -> System.out.println(s +" "));
 				request = request.substring(6);
 
 				switch (reqTok[0]) {
@@ -91,12 +94,14 @@ localhost:8000
 
 						//send request to all other servers
 						long myTimeStamp = System.currentTimeMillis() % 1000;
+						myInfo.setTimeStamp(myTimeStamp);
 
 						String reqMsg = REQ + " " + myInfo.getPort()
 											+ " " + myInfo.getHost()
 											+ " " + myInfo.getID()
 											+ " " + myInfo.getTimeStamp();
 
+						System.out.println("req msg: " + reqMsg);
 						notifyOtherServers(myID, reqMsg);
 
 						//insert self into waiting servers
@@ -108,6 +113,8 @@ localhost:8000
 						numAck = 0;
 						break;
 					case REQ:
+						System.out.println("In REQ: ");
+						Arrays.stream(reqTok).forEach(s -> System.out.println(s +" "));
 						Integer receivedPort = Integer.parseInt(reqTok[1]);
 						String receivedHost = reqTok[2];
 						receivedID = Integer.parseInt(reqTok[3]);
