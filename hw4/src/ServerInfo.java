@@ -74,7 +74,7 @@ class ServerInfo {
 
 	public static ServerInfo dupServer(ServerInfo s) {
 		ServerInfo newServer = new ServerInfo(s.getID(), s.getHost(), s.getPort());
-		s.setTimeStamp(s.getTimeStamp());
+		newServer.setTimeStamp(s.getTimeStamp());
 		return newServer;
 	}
 }

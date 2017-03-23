@@ -4,6 +4,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
 
+import static java.lang.System.exit;
 import static java.lang.Thread.sleep;
 
 public class Server {
@@ -244,10 +245,12 @@ localhost:8002
 				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//delete the request from waiting servers
+				System.out.println("REL -> my waitinglist: ");
+				waitingServers.forEach((aLong, serverInfo) -> System.out.println("server: " + serverInfo + ", time stamp: " + aLong));
+
 				removeWaitingServer(receivedTimeStamp);
 
 				//update inventory or orders
-
 				int i;
 
 				for (i = 0; i < request.length(); i++) {
@@ -269,10 +272,21 @@ localhost:8002
 				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//check if the server is still in waitingList
+				System.out.println("CMP -> my waitinglist: ");
+				waitingServers.forEach((aLong, serverInfo) -> System.out.println("server: " + serverInfo + ", time stamp: " + aLong));
 
 				if (removeWaitingServer(receivedTimeStamp) != null) {
 					//update inventory or orders
-					String completedCommand = request.substring(2);
+					int j;
+
+					for (j = 0; j < request.length(); j++) {
+						if( request.toCharArray()[j] == ' ' )
+							break;
+
+					}
+
+					String completedCommand = request.substring(j+1);
+					System.out.println("[DEBUG] in completion, command: " + completedCommand);
 					processCommand(completedCommand);
 				}
 				break;
@@ -283,7 +297,7 @@ localhost:8002
 				System.out.println("[ERROR] Invalid message received.");
 				break;
 		}
-	};
+	}
 
 	private static synchronized ServerInfo getFirstServerInline() {
 		Collection<ServerInfo> values = waitingServers.values();
@@ -295,7 +309,7 @@ localhost:8002
 	private static synchronized void addWaitingServer(ServerInfo otherServer) {
 		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
 
-		waitingServers.put(newServerTask.getTimeStamp(), newServerTask);
+		waitingServers.put(otherServer.getTimeStamp(), newServerTask);
 	}
 
 	private static synchronized ServerInfo removeWaitingServer(Long timeStamp) {
@@ -366,6 +380,9 @@ localhost:8002
 //				killThisServer(otherServer.getID());
 //				continue;
 			}
+
+
+			if (myID == 1 && id == 2) exit(1);
 
 		}
 
