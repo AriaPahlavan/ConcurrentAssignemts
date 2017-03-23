@@ -15,7 +15,8 @@ public final class SocketStreams {
 
 			socket_out = new PrintWriter(socket.getOutputStream(), true);
 		} catch (IOException e) {
-			e.printStackTrace();
+//			e.printStackTrace();
+			System.out.println("[DEBUG] failed to get output stream, server is crashed");
 		}
 
 		return Optional.ofNullable(socket_out);
@@ -30,7 +31,8 @@ public final class SocketStreams {
 			socket_in = new BufferedReader(new InputStreamReader((input)));
 
 		} catch (IOException e) {
-			e.printStackTrace();
+//			e.printStackTrace();
+			System.out.println("[DEBUG] failed to get input stream, server is crashed");
 		}
 
 		return Optional.ofNullable(socket_in);

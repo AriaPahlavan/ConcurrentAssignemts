@@ -19,7 +19,7 @@ localhost:8002
 	final static String 						END 			= "[END]";
 
 	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
-	private static List<ServerInfo> 			waitingServers	= new ArrayList<>();
+	private static List<ServerInfo> 			waitingServers	= new ArrayList<>();		//TODO what if a server wan't to process two command.
 	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
     private static List<User> 					users 			= new ArrayList<>();
 	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
@@ -59,8 +59,13 @@ localhost:8002
 	}
 
 	private final static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
-		PrintWriter client_out = SocketStreams.getOutStream
-				.apply(socket).orElseThrow(IllegalStateException::new);
+		PrintWriter client_out;
+
+		Optional<PrintWriter> maybeClient = SocketStreams.getOutStream
+				.apply(socket);
+
+		if (maybeClient.isPresent()) client_out = maybeClient.get();
+		else return;
 
 		try {
 
@@ -177,7 +182,7 @@ localhost:8002
 						} catch (IOException e) {
 							System.out.println("IO Exception while waiting for an input:");
 							removeWaitingServer(firstServerInline);
-							Client.killThisServer(firstServerInline);
+							killThisServer(firstServerInline.getID());
 						}
 					}
 				}
@@ -197,7 +202,7 @@ localhost:8002
 				//insert received request into waitingServers
 				ServerInfo otherServer = servers.get(receivedID);
 				otherServer.setTimeStamp(receivedTimeStamp);
-				servers.put(myID, otherServer);
+				servers.put(receivedID, otherServer);
 				addWaitingServer(otherServer);
 
 				//send acknowledgement
@@ -227,7 +232,8 @@ localhost:8002
 				removeWaitingServer(releasedServer);
 
 				//update inventory or orders
-				processCommand(reqTok[2]);
+				String command = request.substring(2);
+				processCommand(command);
 				break;
 			case ACK:
 				System.out.println("ACK received in handler");
@@ -245,6 +251,8 @@ localhost:8002
 	}
 
 	private static synchronized void addWaitingServer(ServerInfo otherServer) {
+//		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
+		
 		waitingServers.add(otherServer);
 	}
 
@@ -337,26 +345,20 @@ localhost:8002
 				servers_out.println(msg);
 				servers_out.flush();
 
-				try {
 
-					String respLine;
+				String respLine;
 
-					while ( (respLine = servers_in.readLine()) != null) {
-						System.out.println(respLine);
+				while ((respLine = servers_in.readLine()) != null) {
+					System.out.println(respLine);
 
-						String[] respTok = respLine.split(" ");
-						if (respTok[0].equals(ACK)) break;
-					}
-
-				} catch (IOException e) {
-					System.out.println("IO Exception while waiting for an input:");
-					Client.killThisServer(otherServer);
-					continue;
+					String[] respTok = respLine.split(" ");
+					if (respTok[0].equals(ACK)) break;
 				}
 
-
 			} catch (IOException e) {
-				e.printStackTrace();
+				System.out.println("IO Exception while waiting for an input:");
+				killThisServer(otherServer.getID());
+				continue;
 			}
 
 		}
@@ -393,6 +395,11 @@ localhost:8002
 				break;
 		}
 		return result;
+	}
+
+	static void killThisServer(int serverId) {
+		System.out.println("Server " + servers.get(serverId).toString() + " is crashed." );
+		servers.get(serverId).killServer();
 	}
 
 	private static String listAllProducts() {

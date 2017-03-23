@@ -71,4 +71,10 @@ class ServerInfo {
 		return "<" + pair.getLeft() + ", " + pair.getRight() + ">";
 //				+ " is " + (isCrashed ? "" : "not") + " crashed.";
 	}
+
+	public static ServerInfo dupServer(ServerInfo s) {
+		ServerInfo newServer = new ServerInfo(s.getID(), s.getHost(), s.getPort());
+		s.setTimeStamp(s.getTimeStamp());
+		return newServer;
+	}
 }
