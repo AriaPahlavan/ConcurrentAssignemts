@@ -3,6 +3,7 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.BiConsumer;
+
 import static java.lang.Thread.sleep;
 
 public class Server {
@@ -16,6 +17,7 @@ localhost:8002
 	final static String 						CMD 			= "[CMD]";
 	final static String 						REQ 			= "[REQ]";
 	final static String 						REL 			= "[REL]";
+	final static String 						CMP 			= "[CMP]";
 	final static String 						END 			= "[END]";
 
 	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
@@ -43,17 +45,26 @@ localhost:8002
 		loadInventory(f);
 
 		ServerSocket serverSocket = new ServerSocket(myPort);
+		List<Socket> allSockets = new ArrayList<>();
 
 		while(true){
 			ServerInfo myInfo = servers.get(myID);
 
-			try (Socket externalSocket = serverSocket.accept()) {
+			Socket externalSocket = serverSocket.accept();
+			allSockets.add(externalSocket);
 
-				//Spawn a new thread to handle incoming messages!
-				Runnable runnable = () -> handler.accept(externalSocket, myInfo);
-				new Thread(runnable).run();
+			InputStream input = externalSocket.getInputStream();
+			BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
+			String request = socket_in.readLine();
+			String[] reqTok = request.split(" ");
 
-			}
+
+			//Spawn a new thread to handle incoming messages!
+			Runnable runnable = () -> handler(externalSocket, myInfo, request);
+			new Thread(runnable).start();
+
+			if (!reqTok[0].equals(CMD)) externalSocket.close();
+
 		}
 
 	}
@@ -81,26 +92,17 @@ localhost:8002
 		}
 	};
 
-	private final static BiConsumer<Socket, ServerInfo> handler = (Socket externalSocket, ServerInfo myInfo) ->  {
+	private final static void handler(Socket externalSocket, ServerInfo myInfo, String request){
 		System.out.println("[DEBUG] entered handler");
 		int myID 			= myInfo.getID();
-		String request 		= "";
+//		String request 		= "";
 		String response;
 		Integer receivedID;
 
 		PrintWriter client_out = null;
 		InputStream input;
 
-		try {
 
-			client_out = new PrintWriter(externalSocket.getOutputStream(), true);
-			input = externalSocket.getInputStream();
-			BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
-			request = socket_in.readLine();
-
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
 
 		String[] reqTok = request.split(" ");
 
@@ -115,6 +117,18 @@ localhost:8002
 		switch (reqTok[0]) {
 			case CMD:
 				System.out.println("[DEBUG] command received: " + request);
+
+
+				try {
+
+					client_out = new PrintWriter(externalSocket.getOutputStream(), true);
+					input = externalSocket.getInputStream();
+					BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
+//					request = socket_in.readLine();
+
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 
 				String[] idAndReq = new String[]{String.valueOf(myID), request};
 				Runnable runnable = () -> clientAckHandler.accept(externalSocket, idAndReq);
@@ -143,6 +157,12 @@ localhost:8002
 				addWaitingServer(myInfo);
 
 
+//				try {
+//					sleep(15000);
+//				} catch (InterruptedException e) {
+//					e.printStackTrace();
+//				}
+
 				while (true) {
 					//check for smallest timeStamp
 					ServerInfo firstServerInline = getFirstServerInline();
@@ -170,17 +190,19 @@ localhost:8002
 						//send release to all other servers
 						removeWaitingServer(myInfo);
 
-						String relMsg = REL + " " + myID + " " + request;
-						notifyRelease(myID, relMsg);
+						String relMsg = REL + " " + myID + " " + request;		//TODO myID could correspond to multiple elements in waitingServers
+						System.out.println("[DEBUG] Sending release to other servers: " + relMsg);
+						notifyServers(myID, relMsg);
 						break;
 					}
 					else {
 						//check if server first in line is alive
 						try {
-							Socket firstServer = new Socket(firstServerInline.getHost(),
-									firstServerInline.getPort());
+
+							Socket firstServer = new Socket(firstServerInline.getHost(), firstServerInline.getPort());
+
 						} catch (IOException e) {
-							System.out.println("IO Exception while waiting for an input:");
+							System.out.println("First server in line was dead: " + firstServerInline);
 							removeWaitingServer(firstServerInline);
 							killThisServer(firstServerInline.getID());
 						}
@@ -234,6 +256,25 @@ localhost:8002
 				//update inventory or orders
 				String command = request.substring(2);
 				processCommand(command);
+
+				String compMsg = CMP + " " + receivedID + " " + command;
+				notifyServers(myID, compMsg);
+				break;
+			case CMP:
+				System.out.println("[DEBUG] received completion: " + request);
+
+				receivedID = Integer.parseInt(reqTok[1]);
+
+				//check if the server is still in waitingList
+				ServerInfo completedServer = servers.get(receivedID);
+
+				if (checkWaitingList(completedServer)){
+					removeWaitingServer(completedServer);
+
+					//update inventory or orders
+					String completedCommand = request.substring(2);
+					processCommand(completedCommand);
+				}
 				break;
 			case ACK:
 				System.out.println("ACK received in handler");
@@ -244,6 +285,10 @@ localhost:8002
 		}
 	};
 
+	private static synchronized boolean checkWaitingList(ServerInfo completedServer) {
+		return waitingServers.contains(completedServer);
+	}
+
 	private static synchronized ServerInfo getFirstServerInline() {
 		return waitingServers.stream()
 				.filter(ServerInfo::isAvail)
@@ -252,7 +297,7 @@ localhost:8002
 
 	private static synchronized void addWaitingServer(ServerInfo otherServer) {
 //		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
-		
+
 		waitingServers.add(otherServer);
 	}
 
@@ -293,7 +338,7 @@ localhost:8002
 		}
 	}
 
-	private static void notifyRelease(int myID, String msg) {
+	private static void notifyServers(int myID, String msg) {
 
 		for (int id = 1; id <= servers.size(); id++) {
 
@@ -313,7 +358,9 @@ localhost:8002
 				servers_out.flush();
 
 			} catch (IOException e) {
-				e.printStackTrace();
+//				System.out.println("IO Exception while waiting for an input:");
+//				killThisServer(otherServer.getID());
+//				continue;
 			}
 
 		}
@@ -356,7 +403,7 @@ localhost:8002
 				}
 
 			} catch (IOException e) {
-				System.out.println("IO Exception while waiting for an input:");
+				System.out.println("Did not get response from server: " + otherServer);
 				killThisServer(otherServer.getID());
 				continue;
 			}
