@@ -21,7 +21,7 @@ localhost:8002
 	final static String 						END 			= "[END]";
 
 	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
-	private static List<ServerInfo> 			waitingServers	= new ArrayList<>();		//TODO what if a server wan't to process two command.
+	private static Map<Long, ServerInfo> 		waitingServers	= new HashMap<>();		//TODO what if a server wan't to process two command.
 	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
     private static List<User> 					users 			= new ArrayList<>();
 	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
@@ -157,12 +157,6 @@ localhost:8002
 				addWaitingServer(myInfo);
 
 
-//				try {
-//					sleep(15000);
-//				} catch (InterruptedException e) {
-//					e.printStackTrace();
-//				}
-
 				while (true) {
 					//check for smallest timeStamp
 					ServerInfo firstServerInline = getFirstServerInline();
@@ -188,9 +182,9 @@ localhost:8002
 
 						//release from CS
 						//send release to all other servers
-						removeWaitingServer(myInfo);
+						removeWaitingServer(myInfo.getTimeStamp());
 
-						String relMsg = REL + " " + myID + " " + request;		//TODO myID could correspond to multiple elements in waitingServers
+						String relMsg = REL + " " + myInfo.getTimeStamp() + " " + request;		//TODO myID could correspond to multiple elements in waitingServers
 						System.out.println("[DEBUG] Sending release to other servers: " + relMsg);
 						notifyServers(myID, relMsg);
 						break;
@@ -203,7 +197,7 @@ localhost:8002
 
 						} catch (IOException e) {
 							System.out.println("First server in line was dead: " + firstServerInline);
-							removeWaitingServer(firstServerInline);
+							removeAllWaiting(firstServerInline);
 							killThisServer(firstServerInline.getID());
 						}
 					}
@@ -247,30 +241,36 @@ localhost:8002
 			case REL:
 				System.out.println("[DEBUG] received release: "+ request);
 
-				receivedID = Integer.parseInt(reqTok[1]);
+				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//delete the request from waiting servers
-				ServerInfo releasedServer = servers.get(receivedID);
-				removeWaitingServer(releasedServer);
+				removeWaitingServer(receivedTimeStamp);
 
 				//update inventory or orders
-				String command = request.substring(2);
+
+				int i;
+
+				for (i = 0; i < request.length(); i++) {
+					if( request.toCharArray()[i] == ' ' )
+						break;
+
+				}
+
+				String command = request.substring(i+1);
+
 				processCommand(command);
 
-				String compMsg = CMP + " " + receivedID + " " + command;
+				String compMsg = CMP + " " + receivedTimeStamp + " " + command;
 				notifyServers(myID, compMsg);
 				break;
 			case CMP:
 				System.out.println("[DEBUG] received completion: " + request);
 
-				receivedID = Integer.parseInt(reqTok[1]);
+				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//check if the server is still in waitingList
-				ServerInfo completedServer = servers.get(receivedID);
 
-				if (checkWaitingList(completedServer)){
-					removeWaitingServer(completedServer);
-
+				if (removeWaitingServer(receivedTimeStamp) != null) {
 					//update inventory or orders
 					String completedCommand = request.substring(2);
 					processCommand(completedCommand);
@@ -285,24 +285,28 @@ localhost:8002
 		}
 	};
 
-	private static synchronized boolean checkWaitingList(ServerInfo completedServer) {
-		return waitingServers.contains(completedServer);
-	}
-
 	private static synchronized ServerInfo getFirstServerInline() {
-		return waitingServers.stream()
+		Collection<ServerInfo> values = waitingServers.values();
+		return values.stream()
 				.filter(ServerInfo::isAvail)
 				.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
 	}
 
 	private static synchronized void addWaitingServer(ServerInfo otherServer) {
-//		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
+		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
 
-		waitingServers.add(otherServer);
+		waitingServers.put(newServerTask.getTimeStamp(), newServerTask);
 	}
 
-	private static synchronized void removeWaitingServer(ServerInfo releasedServer) {
-		waitingServers.remove(releasedServer);
+	private static synchronized ServerInfo removeWaitingServer(Long timeStamp) {
+		return waitingServers.remove(timeStamp);
+	}
+
+	private static synchronized void removeAllWaiting(ServerInfo s){
+		waitingServers.forEach((timeStamp, server) -> {
+			if (Objects.equals(server.getID(), s.getID()))
+				waitingServers.remove(timeStamp);
+		});
 	}
 
 	private static int extractServers(Scanner sc, int myID) {
