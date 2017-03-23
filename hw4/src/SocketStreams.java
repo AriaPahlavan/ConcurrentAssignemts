@@ -1,11 +1,10 @@
+//EIDs: sm47767, ap44342
+
 import java.io.*;
 import java.net.Socket;
 import java.util.Optional;
 import java.util.function.Function;
 
-/**
- * Created by aria on 3/22/17.
- */
 public final class SocketStreams {
 
 	final static Function<Socket, Optional<PrintWriter>> getOutStream = socket -> {

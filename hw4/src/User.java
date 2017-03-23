@@ -1,10 +1,9 @@
+//EIDs: sm47767, ap44342
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-/**
- * Created by Sharmistha on 2/28/2017.
- */
 public class User {
 
     private String name = "";

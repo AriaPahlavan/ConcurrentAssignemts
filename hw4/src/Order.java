@@ -1,6 +1,5 @@
-/**
- * Created by Sharmistha on 2/28/2017.
- */
+//EIDs: sm47767, ap44342
+
 public class Order {
     String name;
     int orderID;

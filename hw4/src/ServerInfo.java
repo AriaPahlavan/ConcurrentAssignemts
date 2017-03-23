@@ -1,6 +1,5 @@
-/**
- * Created by aria on 3/18/17.
- */
+//EIDs: sm47767, ap44342
+
 class ServerInfo {
 	private Pair<String, Integer> pair;
 	private Long timeStamp;

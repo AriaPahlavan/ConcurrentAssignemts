@@ -1,18 +1,15 @@
+//EIDs: sm47767, ap44342
+
 import java.io.*;
-import java.net.*;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
-import static java.lang.System.exit;
 import static java.lang.Thread.sleep;
 
 public class Server {
-/* Aria:
-1 2 src/input/inventory.txt
-localhost:8001
-localhost:8002
-*/
 
 	final static String 						ACK 			= "[ACK]";
 	final static String 						CMD 			= "[CMD]";
@@ -22,7 +19,7 @@ localhost:8002
 	final static String 						END 			= "[END]";
 
 	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
-	private static Map<Long, ServerInfo> 		waitingServers	= new HashMap<>();		//TODO what if a server wan't to process two command.
+	private static Map<Long, ServerInfo> 		waitingServers	= new HashMap<>();
 	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
     private static List<User> 					users 			= new ArrayList<>();
 	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
@@ -40,6 +37,10 @@ localhost:8002
 		File f 					= new File(inventoryPath);
 		numServers 				= totServers;
 		int myPort 				= extractServers(sc, myID);
+
+		System.out.println("[DEBUG] my id: " + myID);
+		System.out.println("[DEBUG] numServer: " + numServers);
+		System.out.println("[DEBUG] inventory path: " + inventoryPath);
 
 		loadInventory(f);
 
@@ -411,6 +412,9 @@ localhost:8002
 
 			case "list":
 				result = listAllProducts();
+				break;
+			default:
+				result = "ERROR: No such command";
 				break;
 		}
 		return result;
