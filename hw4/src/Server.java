@@ -2,7 +2,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
-
+import java.util.function.BiConsumer;
 import static java.lang.Thread.sleep;
 
 public class Server {
@@ -12,18 +12,19 @@ localhost:8001
 localhost:8002
 */
 
-	final static String ACK 		= "[ACK]";
-	final static String CMD 		= "[CMD]";
-	private final static String REQ = "[REQ]";
-	private final static String REL = "[REL]";
+	final static String 						ACK 			= "[ACK]";
+	final static String 						CMD 			= "[CMD]";
+	final static String 						REQ 			= "[REQ]";
+	final static String 						REL 			= "[REL]";
+	final static String 						END 			= "[END]";
 
-	static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
-	static List<ServerInfo> 			waitingServers	= new ArrayList<>();
-	static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
-    static List<User> 					users 			= new ArrayList<>();
-	static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
-	static Queue<ClientInfo> waitingClients = new ConcurrentLinkedDeque<>();
-	static int orderID = 1;
+	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
+	private static List<ServerInfo> 			waitingServers	= new ArrayList<>();
+	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
+    private static List<User> 					users 			= new ArrayList<>();
+	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
+	private static int 							orderID 		= 1;
+	private static int 							numServers;
 
 	public static void main (String[] args) throws Exception {
 //		System.out.println("Enter <server-id> <n> <inventory-path>");
@@ -33,14 +34,228 @@ localhost:8002
 		//Scan inputs
 		Scanner sc 				= new Scanner(System.in);
 		int myID 				= sc.nextInt();
-		int numServer 			= sc.nextInt();
+		int totServers 			= sc.nextInt();
 		String inventoryPath 	= sc.next();
 		File f 					= new File(inventoryPath);
-		int numAck 				= 0;
-		int myPort 				= -1;
-		Scanner file_sc;
+		numServers 				= totServers;
+		int myPort 				= extractServers(sc, myID);
 
-		for (int id = 1; id <= numServer; id++) {
+		loadInventory(f);
+
+		ServerSocket serverSocket = new ServerSocket(myPort);
+
+		while(true){
+			ServerInfo myInfo = servers.get(myID);
+
+			try (Socket externalSocket = serverSocket.accept()) {
+
+				//Spawn a new thread to handle incoming messages!
+				Runnable runnable = () -> handler.accept(externalSocket, myInfo);
+				new Thread(runnable).run();
+
+			}
+		}
+
+	}
+
+	private final static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
+		PrintWriter client_out = SocketStreams.getOutStream
+				.apply(socket).orElseThrow(IllegalStateException::new);
+
+		try {
+
+			while (!Thread.currentThread().isInterrupted()) {
+				//send ack to client
+				client_out.println(ack(Integer.parseInt(idAndReq[0]), idAndReq[1]));
+				sleep(80);
+			}
+
+		} catch (InterruptedException e) {
+			System.out.println("[DEBUG] acknowledge thread ended.");
+			return;
+		}
+	};
+
+	private final static BiConsumer<Socket, ServerInfo> handler = (Socket externalSocket, ServerInfo myInfo) ->  {
+		System.out.println("[DEBUG] entered handler");
+		int myID 			= myInfo.getID();
+		String request 		= "";
+		String response;
+		Integer receivedID;
+
+		PrintWriter client_out = null;
+		InputStream input;
+
+		try {
+
+			client_out = new PrintWriter(externalSocket.getOutputStream(), true);
+			input = externalSocket.getInputStream();
+			BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
+			request = socket_in.readLine();
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		String[] reqTok = request.split(" ");
+
+		//debug{
+//		System.out.println("before striping off the tag:");
+//		Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
+//		System.out.println();
+		//}end
+
+		request = request.substring(6);
+
+		switch (reqTok[0]) {
+			case CMD:
+				System.out.println("[DEBUG] command received: " + request);
+
+				String[] idAndReq = new String[]{String.valueOf(myID), request};
+				Runnable runnable = () -> clientAckHandler.accept(externalSocket, idAndReq);
+				Thread clientAcknowledger = new Thread(runnable);
+				clientAcknowledger.start();
+
+				//send request to all other servers
+
+				long myTimeStamp = System.currentTimeMillis() % 1000000;
+				myInfo.setTimeStamp(myTimeStamp);
+
+				String reqMsg = REQ + " " + myInfo.getPort()
+									+ " " + myInfo.getHost()
+									+ " " + myInfo.getID()
+									+ " " + myInfo.getTimeStamp();
+
+				broadcastToOtherServers(myID, reqMsg);
+
+				//debug{
+//				System.out.println("req msg: " + reqMsg);
+				//}end
+
+				//insert self into waiting servers
+				myInfo.setTimeStamp(myTimeStamp);
+				servers.put(myID, myInfo);
+				addWaitingServer(myInfo);
+
+
+				while (true) {
+					//check for smallest timeStamp
+					ServerInfo firstServerInline = getFirstServerInline();
+
+
+					if (firstServerInline.equals(myInfo)) {
+						//enter CS and process command
+						response = processCommand(request);
+
+						//debug{
+						System.out.println("response to client: " + response);
+						//}end
+
+						clientAcknowledger.interrupt();
+
+						try {
+							clientAcknowledger.join();
+						} catch (InterruptedException ignored) {}
+
+						client_out.println(response);
+						client_out.println(END);
+						client_out.flush();
+
+						//release from CS
+						//send release to all other servers
+						removeWaitingServer(myInfo);
+
+						String relMsg = REL + " " + myID + " " + request;
+						notifyRelease(myID, relMsg);
+						break;
+					}
+					else {
+						//check if server first in line is alive
+						try {
+							Socket firstServer = new Socket(firstServerInline.getHost(),
+									firstServerInline.getPort());
+						} catch (IOException e) {
+							System.out.println("IO Exception while waiting for an input:");
+							removeWaitingServer(firstServerInline);
+							Client.killThisServer(firstServerInline);
+						}
+					}
+				}
+				break;
+			case REQ:
+				//debug{
+				System.out.println("[DEBUG] received request: ");
+				Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
+				//}end
+
+
+				Integer receivedPort 	= Integer.parseInt(reqTok[1]);
+				String receivedHost 	= reqTok[2];
+				receivedID 				= Integer.parseInt(reqTok[3]);
+				Long receivedTimeStamp 	= Long.parseLong(reqTok[4]);
+
+				//insert received request into waitingServers
+				ServerInfo otherServer = servers.get(receivedID);
+				otherServer.setTimeStamp(receivedTimeStamp);
+				servers.put(myID, otherServer);
+				addWaitingServer(otherServer);
+
+				//send acknowledgement
+				Socket otherSocket;
+
+				try {
+
+					otherSocket = new Socket(receivedHost, receivedPort);
+					PrintWriter otherOut;
+					otherOut = new PrintWriter(otherSocket.getOutputStream());
+
+					otherOut.println(ACK + " server " + myInfo + " received request: " + request);
+					otherOut.flush();
+
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+
+				break;
+			case REL:
+				System.out.println("[DEBUG] received release: "+ request);
+
+				receivedID = Integer.parseInt(reqTok[1]);
+
+				//delete the request from waiting servers
+				ServerInfo releasedServer = servers.get(receivedID);
+				removeWaitingServer(releasedServer);
+
+				//update inventory or orders
+				processCommand(reqTok[2]);
+				break;
+			case ACK:
+				System.out.println("ACK received in handler");
+				break;
+			default:
+				System.out.println("[ERROR] Invalid message received.");
+				break;
+		}
+	};
+
+	private static synchronized ServerInfo getFirstServerInline() {
+		return waitingServers.stream()
+				.filter(ServerInfo::isAvail)
+				.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
+	}
+
+	private static synchronized void addWaitingServer(ServerInfo otherServer) {
+		waitingServers.add(otherServer);
+	}
+
+	private static synchronized void removeWaitingServer(ServerInfo releasedServer) {
+		waitingServers.remove(releasedServer);
+	}
+
+	private static int extractServers(Scanner sc, int myID) {
+		int myPort = 0;
+
+		for (int id = 1; id <= numServers; id++) {
 
 			String ipAndPort 		= sc.next();
 			String[] tokens 		= ipAndPort.split(":");
@@ -53,8 +268,11 @@ localhost:8002
 			servers.put(id, newServer);
 		}
 
+		return myPort;
+	}
 
-		//fill the inventory
+	private static void loadInventory(File f) {
+		Scanner file_sc;
 		try{
 			file_sc = new Scanner(f);
 
@@ -65,178 +283,91 @@ localhost:8002
 		} catch(FileNotFoundException e){
 			System.out.println("[ERROR] File Not Found.");
 		}
+	}
 
+	private static void notifyRelease(int myID, String msg) {
 
-		ServerSocket serverSocket = new ServerSocket(myPort);
+		for (int id = 1; id <= servers.size(); id++) {
 
-		while(true){
-			String request, response;
-			Integer receivedID;
-			ServerInfo myInfo = servers.get(myID);
+			if (id == myID) continue;
+			if (servers.get(id).isCrashed()) continue;
 
-			try (Socket externalSocket = serverSocket.accept()) {
+			ServerInfo otherServer = servers.get(id);
+			Socket otherSocket;
 
-				PrintWriter client_out = new PrintWriter(externalSocket.getOutputStream(), true);
-				InputStream input = externalSocket.getInputStream();
-				BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
+			try {
 
-				request = socket_in.readLine();
-				String[] reqTok = request.split(" ");
+				otherSocket = new Socket(otherServer.getHost(), otherServer.getPort());
 
-				//debug{
-				System.out.println("before striping off the tag:");
-				Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
-				System.out.println();
-				//}end
+				PrintWriter servers_out = SocketStreams.getOutStream.apply(otherSocket).get();
 
-				request = request.substring(6);
+				servers_out.println(msg);
+				servers_out.flush();
 
-				switch (reqTok[0]) {
-					case CMD:
-						client_out.println(ack(myID, request));        //send ack to client
-
-						//send request to all other servers
-						long myTimeStamp = System.currentTimeMillis() % 1000000;
-						myInfo.setTimeStamp(myTimeStamp);
-
-						String reqMsg = REQ + " " + myInfo.getPort()
-											+ " " + myInfo.getHost()
-											+ " " + myInfo.getID()
-											+ " " + myInfo.getTimeStamp();
-
-						System.out.println("req msg: " + reqMsg);
-						notifyOtherServers(myID, reqMsg);
-
-						//insert self into waiting servers
-						myInfo.setTimeStamp(myTimeStamp);
-						servers.put(myID, myInfo);
-						waitingServers.add(myInfo);
-
-						//insert client command and output stream in a list
-						ClientInfo newClient = new ClientInfo(client_out, request);
-						waitingClients.add(newClient);
-
-						numAck = 0;
-
-						break;
-					case REQ:
-						System.out.println("In REQ: ");
-						Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
-						Integer receivedPort = Integer.parseInt(reqTok[1]);
-						String receivedHost = reqTok[2];
-						receivedID = Integer.parseInt(reqTok[3]);
-						Long receivedTimeStamp = Long.parseLong(reqTok[4]);
-
-						//insert received request into waitingServers
-						ServerInfo otherServer = servers.get(receivedID);
-						otherServer.setTimeStamp(receivedTimeStamp);
-						servers.put(myID, otherServer);
-						waitingServers.add(otherServer);
-
-						//send acknowledgement
-						Socket otherSocket = new Socket(receivedHost, receivedPort);
-						PrintWriter otherOut = new PrintWriter(otherSocket.getOutputStream());
-						otherOut.println(ACK + " server " + myInfo + " received request: " + request);
-						otherOut.flush();
-						break;
-					case ACK:
-						numAck = numAck + 1;
-
-						//if received all acknowledgements and timestamp is smallest -> enterCS
-						if (numAck == numServer - 1) {
-
-							//check for smallest timeStamp
-							ServerInfo firstServerInline = waitingServers.stream()
-									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
-
-							if (firstServerInline.equals(myInfo)) {
-								//enter CS and process command
-								ClientInfo nextClient = waitingClients.poll();
-
-								if (nextClient == null) break;  //break the switch loop
-
-								response = processCommand(nextClient.getCommand());
-
-								//debug{
-								System.out.println("response to client: " + response);
-								//}end
-
-								nextClient.getOutputStream().println(response);
-								nextClient.getOutputStream().flush();
-
-								//release from CS
-								//send request to all other servers
-								waitingServers.remove(myInfo);
-
-								String relMsg = REL + " " + myID + " " + nextClient.getCommand();
-								notifyOtherServers(myID, relMsg);
-							}
-						}
-						break;
-					case REL:
-						receivedID = Integer.parseInt(reqTok[1]);
-
-						//delete the request from waiting servers
-						ServerInfo releasedServer = servers.get(receivedID);
-						waitingServers.remove(releasedServer);
-
-						//if other server modified inventory or orders, perform the same action
-						processCommand(reqTok[2]);
-
-						//if received all acknowledgements and timestamp is smallest -> enterCS and then release
-						if (numAck == numServer - 1) {
-
-							//check for smallest timeStamp
-							ServerInfo firstServerInline = waitingServers.stream()
-									.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
-
-							if (firstServerInline.equals(myInfo)) {
-								//enter CS and process command
-								ClientInfo nextClient = waitingClients.poll();
-
-								if (nextClient == null) break;  //break the switch loop
-
-								response = processCommand(nextClient.getCommand());
-
-								nextClient.getOutputStream().println(response);
-								nextClient.getOutputStream().flush();
-
-								//release from CS
-								//send request to all other servers
-								waitingServers.remove(myInfo);
-
-								String relMsg = REL + " " + myInfo.getID() + " " + nextClient.getCommand();
-								notifyOtherServers(myInfo.getID(), relMsg);
-							}
-						}
-						break;
-					default:
-						System.out.println("[ERROR] Invalid message received.");
-						break;
-				}
+			} catch (IOException e) {
+				e.printStackTrace();
 			}
+
 		}
 
 	}
 
-	private static void notifyOtherServers(int myID, String msg) throws IOException {
+	private static void broadcastToOtherServers(int myID, String msg) {
+		System.out.println("[DEBUG] entered broadcaster");
+
 		for (int id = 1; id <= servers.size(); id++) {
+
 			if (id == myID) continue;
+			if (servers.get(id).isCrashed()) continue;
 
 			ServerInfo otherServer = servers.get(id);
-			Socket otherSocket = new Socket(otherServer.getHost(), otherServer.getPort());
-			PrintWriter servers_out = new PrintWriter(otherSocket.getOutputStream());
+			Socket otherSocket;
 
-			servers_out.println(msg);
-			servers_out.flush();
+			try {
+
+				otherSocket = new Socket(otherServer.getHost(), otherServer.getPort());
+				otherSocket.setSoTimeout(Client.CONNECTION_TIMEOUT);
+
+				PrintWriter servers_out = SocketStreams.getOutStream.apply(otherSocket).get();
+				BufferedReader servers_in = SocketStreams.getInStream.apply(otherSocket).get();
+
+				System.out.println("requesting CS from: " + otherServer + ", with msg: ");
+				System.out.println(msg);
+
+				servers_out.println(msg);
+				servers_out.flush();
+
+				try {
+
+					String respLine;
+
+					while ( (respLine = servers_in.readLine()) != null) {
+						System.out.println(respLine);
+
+						String[] respTok = respLine.split(" ");
+						if (respTok[0].equals(ACK)) break;
+					}
+
+				} catch (IOException e) {
+					System.out.println("IO Exception while waiting for an input:");
+					Client.killThisServer(otherServer);
+					continue;
+				}
+
+
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
 		}
+
 	}
 
 	private static String ack(int myID, String request) {
 		return (ACK + " " +servers.get(myID).toString() + " received the request: " + request);
 	}
 
-	private static String processCommand(String req) throws IOException, InterruptedException {
+	private static String processCommand(String req) {
 		String[] tokens = req.split(" ");
 		String result = "";
 		switch (tokens[0]) {

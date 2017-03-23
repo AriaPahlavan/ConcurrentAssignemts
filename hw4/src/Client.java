@@ -70,24 +70,25 @@ public class Client {
 				continue;
 			}
 
-//			clientSocket.setSoTimeout(CONNECTION_TIMEOUT);
+			clientSocket.setSoTimeout(CONNECTION_TIMEOUT);
 
 			socket_out = new PrintWriter(clientSocket.getOutputStream());
 			socket_in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
 
 			socket_out.println(Server.CMD + " " + command);
-			socket_out.flush();                //TODO why flush the stream user after println?
+			socket_out.flush();
 
 			try {
 				while ((respLine = socket_in.readLine()) != null) {
-					System.out.println(respLine);
 
 					String[] respTok = respLine.split(" ");
 
 					if (respTok[0].equals(Server.ACK)) {
-						lookingForAliveServer = false;
-						clientSocket.setSoTimeout(0);    //disable timeout
+						continue;
 					}
+					else if (respTok[0].equals(Server.END)) return;
+
+					System.out.println(respLine);
 				}
 			} catch (IOException e) {
 				System.out.println("IO Exception while waiting for an input:");
@@ -100,7 +101,7 @@ public class Client {
 
 	}
 
-	private static void killThisServer(ServerInfo aServer) {
+	static void killThisServer(ServerInfo aServer) {
 		System.out.println("Server " + aServer.toString() + " is crashed." );
 		servers.get(servers.indexOf(aServer)).killServer();
 	}

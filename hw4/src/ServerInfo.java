@@ -3,10 +3,10 @@
  */
 class ServerInfo {
 	private Pair<String, Integer> pair;
-	Long timeStamp;
-	Integer port;
-	Integer serverID;
-	boolean isCrashed = false;
+	private Long timeStamp;
+	private Integer port;
+	private Integer serverID;
+	private boolean isCrashed = false;
 
 	public ServerInfo() {}
 
@@ -41,6 +41,10 @@ class ServerInfo {
 
 	public boolean isAvail() {
 		return !isCrashed;
+	}
+
+	public boolean isCrashed() {
+		return isCrashed;
 	}
 
 	public void killServer() {
