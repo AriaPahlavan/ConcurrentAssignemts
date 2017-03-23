@@ -30,8 +30,6 @@ localhost:8002
 	private static int 							numServers;
 
 	public static void main (String[] args) throws Exception {
-//		System.out.println("Enter <server-id> <n> <inventory-path>");
-//		System.out.println("Enter <ip-address>:<port-number>");
 
 		//
 		//Scan inputs
@@ -88,13 +86,11 @@ localhost:8002
 			}
 
 		} catch (InterruptedException e) {
-			System.out.println("[DEBUG] acknowledge thread ended.");
 			return;
 		}
 	};
 
 	private final static void handler(Socket externalSocket, ServerInfo myInfo, String request){
-		System.out.println("[DEBUG] entered handler");
 		int myID 			= myInfo.getID();
 //		String request 		= "";
 		String response;
@@ -107,25 +103,15 @@ localhost:8002
 
 		String[] reqTok = request.split(" ");
 
-		//debug{
-//		System.out.println("before striping off the tag:");
-//		Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
-//		System.out.println();
-		//}end
-
 		request = request.substring(6);
 
 		switch (reqTok[0]) {
 			case CMD:
-				System.out.println("[DEBUG] command received: " + request);
-
-
 				try {
 
 					client_out = new PrintWriter(externalSocket.getOutputStream(), true);
 					input = externalSocket.getInputStream();
 					BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
-//					request = socket_in.readLine();
 
 				} catch (IOException e) {
 					e.printStackTrace();
@@ -148,9 +134,6 @@ localhost:8002
 
 				broadcastToOtherServers(myID, reqMsg);
 
-				//debug{
-//				System.out.println("req msg: " + reqMsg);
-				//}end
 
 				//insert self into waiting servers
 				myInfo.setTimeStamp(myTimeStamp);
@@ -167,9 +150,6 @@ localhost:8002
 						//enter CS and process command
 						response = processCommand(request);
 
-						//debug{
-						System.out.println("response to client: " + response);
-						//}end
 
 						clientAcknowledger.interrupt();
 
@@ -185,8 +165,7 @@ localhost:8002
 						//send release to all other servers
 						removeWaitingServer(myInfo.getTimeStamp());
 
-						String relMsg = REL + " " + myInfo.getTimeStamp() + " " + request;		//TODO myID could correspond to multiple elements in waitingServers
-						System.out.println("[DEBUG] Sending release to other servers: " + relMsg);
+						String relMsg = REL + " " + myInfo.getTimeStamp() + " " + request;
 						notifyServers(myID, relMsg);
 						break;
 					}
@@ -197,7 +176,6 @@ localhost:8002
 							Socket firstServer = new Socket(firstServerInline.getHost(), firstServerInline.getPort());
 
 						} catch (IOException e) {
-							System.out.println("First server in line was dead: " + firstServerInline);
 							removeAllWaiting(firstServerInline);
 							killThisServer(firstServerInline.getID());
 						}
@@ -205,12 +183,6 @@ localhost:8002
 				}
 				break;
 			case REQ:
-				//debug{
-				System.out.println("[DEBUG] received request: ");
-				Arrays.stream(reqTok).forEach(s -> System.out.print(s +" "));
-				//}end
-
-
 				Integer receivedPort 	= Integer.parseInt(reqTok[1]);
 				String receivedHost 	= reqTok[2];
 				receivedID 				= Integer.parseInt(reqTok[3]);
@@ -240,14 +212,9 @@ localhost:8002
 
 				break;
 			case REL:
-				System.out.println("[DEBUG] received release: "+ request);
-
 				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//delete the request from waiting servers
-				System.out.println("REL -> my waitinglist: ");
-				waitingServers.forEach((aLong, serverInfo) -> System.out.println("server: " + serverInfo + ", time stamp: " + aLong));
-
 				removeWaitingServer(receivedTimeStamp);
 
 				//update inventory or orders
@@ -267,14 +234,9 @@ localhost:8002
 				notifyServers(myID, compMsg);
 				break;
 			case CMP:
-				System.out.println("[DEBUG] received completion: " + request);
-
 				receivedTimeStamp = Long.parseLong(reqTok[1]);
 
 				//check if the server is still in waitingList
-				System.out.println("CMP -> my waitinglist: ");
-				waitingServers.forEach((aLong, serverInfo) -> System.out.println("server: " + serverInfo + ", time stamp: " + aLong));
-
 				if (removeWaitingServer(receivedTimeStamp) != null) {
 					//update inventory or orders
 					int j;
@@ -286,15 +248,12 @@ localhost:8002
 					}
 
 					String completedCommand = request.substring(j+1);
-					System.out.println("[DEBUG] in completion, command: " + completedCommand);
 					processCommand(completedCommand);
 				}
 				break;
 			case ACK:
-				System.out.println("ACK received in handler");
 				break;
 			default:
-				System.out.println("[ERROR] Invalid message received.");
 				break;
 		}
 	}
@@ -381,15 +340,11 @@ localhost:8002
 //				continue;
 			}
 
-
-			if (myID == 1 && id == 2) exit(1);
-
 		}
 
 	}
 
 	private static void broadcastToOtherServers(int myID, String msg) {
-		System.out.println("[DEBUG] entered broadcaster");
 
 		for (int id = 1; id <= servers.size(); id++) {
 
@@ -407,8 +362,6 @@ localhost:8002
 				PrintWriter servers_out = SocketStreams.getOutStream.apply(otherSocket).get();
 				BufferedReader servers_in = SocketStreams.getInStream.apply(otherSocket).get();
 
-				System.out.println("requesting CS from: " + otherServer + ", with msg: ");
-				System.out.println(msg);
 
 				servers_out.println(msg);
 				servers_out.flush();
@@ -417,14 +370,12 @@ localhost:8002
 				String respLine;
 
 				while ((respLine = servers_in.readLine()) != null) {
-					System.out.println(respLine);
 
 					String[] respTok = respLine.split(" ");
 					if (respTok[0].equals(ACK)) break;
 				}
 
 			} catch (IOException e) {
-				System.out.println("Did not get response from server: " + otherServer);
 				killThisServer(otherServer.getID());
 				continue;
 			}
@@ -466,7 +417,6 @@ localhost:8002
 	}
 
 	static void killThisServer(int serverId) {
-		System.out.println("Server " + servers.get(serverId).toString() + " is crashed." );
 		servers.get(serverId).killServer();
 	}
 

@@ -11,8 +11,6 @@ public class Client {
 	final static int CONNECTION_TIMEOUT = 100;
 
 	public static void main(String[] args) throws IOException {
-		System.out.println("<n, number of servers present>");
-		System.out.println("<ip-address>:<port-number>");
 		Scanner system_in 		= new Scanner(System.in);
 		int numServers 			= system_in.nextInt();
 
@@ -42,8 +40,7 @@ public class Client {
 			Optional<ServerInfo> anOptionalServer = servers.stream().filter(ServerInfo::isAvail).findFirst();
 
 			if (anOptionalServer.isPresent())
-				System.out.println("[DEBUG] Found server: " +
-						anOptionalServer.get().toString());
+				System.out.print("");
 			else {
 				System.out.println("[ERROR] No Servers Found.");
 				System.exit(1);
@@ -60,12 +57,10 @@ public class Client {
 				clientSocket.connect(new InetSocketAddress(host, port), CONNECTION_TIMEOUT);
 			}
 			catch (SocketTimeoutException e) {
-				System.out.println("Socket Timeout Exception:");
 				killThisServer(aServer);
 				continue;
 			}
 			catch (IOException e) {
-				System.out.println("IO Exception while trying to establish connection:");
 				killThisServer(aServer);
 				continue;
 			}
@@ -91,7 +86,6 @@ public class Client {
 					System.out.println(respLine);
 				}
 			} catch (IOException e) {
-				System.out.println("IO Exception while waiting for an input:");
 				killThisServer(aServer);
 				continue;
 			}
@@ -102,7 +96,6 @@ public class Client {
 	}
 
 	static void killThisServer(ServerInfo aServer) {
-		System.out.println("Server " + aServer.toString() + " is crashed." );
 		servers.get(servers.indexOf(aServer)).killServer();
 	}
 }
