@@ -3,29 +3,31 @@
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.DoubleBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 import static java.lang.Thread.sleep;
 
-public class Server {
+public final class Server {
 
-	final static String 						ACK 			= "[ACK]";
-	final static String 						CMD 			= "[CMD]";
-	final static String 						REQ 			= "[REQ]";
-	final static String 						REL 			= "[REL]";
-	final static String 						CMP 			= "[CMP]";
-	final static String 						END 			= "[END]";
+	final static String 				ACK 			= "[ACK]";
+	final static String 				CMD 			= "[CMD]";
+	final static String 				REQ 			= "[REQ]";
+	final static String 				REL 			= "[REL]";
+	final static String 				CMP 			= "[CMP]";
+	final static String 				END 			= "[END]";
 
 	private static Map<Integer,ServerInfo> 		servers 		= new ConcurrentHashMap<>();
-	private static Map<Long, ServerInfo> 		waitingServers	= new ConcurrentHashMap<>();
+	private static Map<Long, ServerInfo> 		waitingServers		= new ConcurrentHashMap<>();
 	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
 	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
-	private static List<User> 					users 			= new ArrayList<>();
-	private static int 							orderID 		= 1;
-	private static int 							numServers;
+	private static List<User> 			users 			= new ArrayList<>();
+	private static int				orderID 		= 1;
+	private static int 				numServers;
 
+	
 	public static void main (String[] args) throws Exception {
 
 		//
@@ -38,261 +40,57 @@ public class Server {
 		numServers 				= totServers;
 		int myPort 				= extractServers(sc, myID);
 
-		System.out.println("[DEBUG] my id: " + myID);
-		System.out.println("[DEBUG] numServer: " + numServers);
-		System.out.println("[DEBUG] inventory path: " + inventoryPath);
+//		System.out.println("[DEBUG] my id: " + myID);
+//		System.out.println("[DEBUG] numServer: " + numServers);
+//		System.out.println("[DEBUG] inventory path: " + inventoryPath);
 
 		loadInventory(f);
 
 		ServerSocket serverSocket = new ServerSocket(myPort);
-//		List<Socket> allSockets = new ArrayList<>();
 
 		while(true){
 			ServerInfo myInfo = servers.get(myID);
-
 			Socket externalSocket = serverSocket.accept();
-//			allSockets.add(externalSocket);
 
-			SocketStreams.getInStream
-					.apply(externalSocket)
-					.ifPresent(socket_in -> serverHandler(myInfo, externalSocket, socket_in));
+			ServerHandlers.maybeRequest.apply(externalSocket).ifPresent(request -> {
+				BiConsumer<Socket, ServerInfo> serverHandler = ServerHandlers.handler.apply(request);
+
+				SocketStreams.getInStream
+						.apply(externalSocket)
+						.ifPresent(socket_in -> serverHandler.accept(externalSocket, myInfo));
+			});
+
+
+
 		}
 
 	}
 
-	private static void serverHandler(ServerInfo myInfo, Socket externalSocket, BufferedReader socket_in) {
-		try {
-			String request = socket_in.readLine();
-			String[] reqTok = request.split(" ");
-
-			//Spawn a new thread to handle incoming messages!
-			Runnable runnable = () -> handler(externalSocket, myInfo, request);
-			new Thread(runnable).start();
-
-			if (!reqTok[0].equals(CMD)) externalSocket.close();
-
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
-
-	private final static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
-		PrintWriter client_out;
-
-		Optional<PrintWriter> maybeClient = SocketStreams.getOutStream
-				.apply(socket);
-
-		if (maybeClient.isPresent()) client_out = maybeClient.get();
-		else return;
-
-		try {
-
-			while (!Thread.currentThread().isInterrupted()) {
-				//send ack to client
-				client_out.println(ack(Integer.parseInt(idAndReq[0]), idAndReq[1]));
-				sleep(80);
-			}
-
-		} catch (InterruptedException e) {
-			return;
-		}
-	};
-
-	private final static void handler(Socket externalSocket, ServerInfo myInfo, String request){
-		int myID 			= myInfo.getID();
-		String response;
-		Integer receivedID;
-
-		PrintWriter client_out = null;
-		InputStream input;
-
-
-
-		String[] reqTok = request.split(" ");
-
-		request = request.substring(6);
-
-		switch (reqTok[0]) {
-			case CMD:
-				try {
-
-					client_out = new PrintWriter(externalSocket.getOutputStream(), true);
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-
-				String[] idAndReq = new String[]{String.valueOf(myID), request};
-				Runnable runnable = () -> clientAckHandler.accept(externalSocket, idAndReq);
-				Thread clientAcknowledger = new Thread(runnable);
-				clientAcknowledger.start();
-
-				//send request to all other servers
-
-				long myTimeStamp = System.currentTimeMillis() % 1000000;
-				myInfo.setTimeStamp(myTimeStamp);
-
-				String reqMsg = REQ + " " + myInfo.getPort()
-									+ " " + myInfo.getHost()
-									+ " " + myInfo.getID()
-									+ " " + myInfo.getTimeStamp();
-
-				broadcastToOtherServers(myID, reqMsg);
-
-
-				//insert self into waiting servers
-				myInfo.setTimeStamp(myTimeStamp);
-				servers.put(myID, myInfo);
-				addWaitingServer(myInfo);
-
-
-				try {
-					sleep(5000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-
-				while (true) {
-					//check for smallest timeStamp
-					ServerInfo firstServerInline = getFirstServerInline();
-
-
-					if (firstServerInline.equals(myInfo)) {
-						//enter CS and process command
-						response = processCommand(request);
-
-
-						clientAcknowledger.interrupt();
-
-						try {
-							clientAcknowledger.join();
-						} catch (InterruptedException ignored) {}
-
-						client_out.println(response);
-						client_out.println(END);
-						client_out.flush();
-
-						//release from CS
-						//send release to all other servers
-						removeWaitingServer(myInfo.getTimeStamp());
-
-						String relMsg = REL + " " + myInfo.getTimeStamp() + " " + request;
-						notifyServers(myID, relMsg);
-						break;
-					}
-					else {
-						//check if server first in line is alive
-						try {
-
-							Socket firstServer = new Socket(firstServerInline.getHost(), firstServerInline.getPort());
-
-						} catch (IOException e) {
-							removeAllWaiting(firstServerInline);
-							killThisServer(firstServerInline.getID());
-						}
-					}
-				}
-				break;
-			case REQ:
-				Integer receivedPort 	= Integer.parseInt(reqTok[1]);
-				String receivedHost 	= reqTok[2];
-				receivedID 				= Integer.parseInt(reqTok[3]);
-				Long receivedTimeStamp 	= Long.parseLong(reqTok[4]);
-
-				//insert received request into waitingServers
-				ServerInfo otherServer = servers.get(receivedID);
-				otherServer.setTimeStamp(receivedTimeStamp);
-				servers.put(receivedID, otherServer);
-				addWaitingServer(otherServer);
-
-				//send acknowledgement
-				Socket otherSocket;
-
-				try {
-
-					otherSocket = new Socket(receivedHost, receivedPort);
-					PrintWriter otherOut;
-					otherOut = new PrintWriter(otherSocket.getOutputStream());
-
-					otherOut.println(ACK + " server " + myInfo + " received request: " + request);
-					otherOut.flush();
-
-				} catch (IOException e) {
-					e.printStackTrace();
-				}
-
-				break;
-			case REL:
-				receivedTimeStamp = Long.parseLong(reqTok[1]);
-
-				//delete the request from waiting servers
-				removeWaitingServer(receivedTimeStamp);
-
-				//update inventory or orders
-				int i;
-
-				for (i = 0; i < request.length(); i++) {
-					if( request.toCharArray()[i] == ' ' )
-						break;
-
-				}
-
-				String command = request.substring(i+1);
-
-				processCommand(command);
-
-				String compMsg = CMP + " " + receivedTimeStamp + " " + command;
-				notifyServers(myID, compMsg);
-				break;
-			case CMP:
-				receivedTimeStamp = Long.parseLong(reqTok[1]);
-
-				//check if the server is still in waitingList
-				if (removeWaitingServer(receivedTimeStamp) != null) {
-					//update inventory or orders
-					int j;
-
-					for (j = 0; j < request.length(); j++) {
-						if( request.toCharArray()[j] == ' ' )
-							break;
-
-					}
-
-					String completedCommand = request.substring(j+1);
-					processCommand(completedCommand);
-				}
-				break;
-			case ACK:
-				break;
-			default:
-				break;
-		}
-	}
-
-	private static synchronized ServerInfo getFirstServerInline() {
+	static synchronized ServerInfo getFirstServerInline() {
 		Collection<ServerInfo> values = waitingServers.values();
 		return values.stream()
 				.filter(ServerInfo::isAvail)
 				.min(Comparator.comparing(ServerInfo::getTimeStamp)).get();
 	}
 
-	private static synchronized void addWaitingServer(ServerInfo otherServer) {
+	static synchronized void addWaitingServer(ServerInfo otherServer) {
 		ServerInfo newServerTask = ServerInfo.dupServer(otherServer);
 
 		waitingServers.put(otherServer.getTimeStamp(), newServerTask);
 	}
 
-	private static synchronized ServerInfo removeWaitingServer(Long timeStamp) {
+	static synchronized ServerInfo removeWaitingServer(Long timeStamp) {
 		return waitingServers.remove(timeStamp);
 	}
 
-	private static synchronized void removeAllWaiting(ServerInfo s){
+	static synchronized void removeAllWaiting(ServerInfo s){
 		waitingServers.forEach((timeStamp, server) -> {
 			if (Objects.equals(server.getID(), s.getID()))
 				waitingServers.remove(timeStamp);
 		});
 	}
 
-	private static int extractServers(Scanner sc, int myID) {
+	static int extractServers(Scanner sc, int myID) {
 		int myPort = 0;
 
 		for (int id = 1; id <= numServers; id++) {
@@ -311,7 +109,7 @@ public class Server {
 		return myPort;
 	}
 
-	private static void loadInventory(File f) {
+	static void loadInventory(File f) {
 		Scanner file_sc;
 		try{
 			file_sc = new Scanner(f);
@@ -325,7 +123,7 @@ public class Server {
 		}
 	}
 
-	private static void notifyServers(int myID, String msg) {
+	static void notifyServers(int myID, String msg) {
 
 		for (int id = 1; id <= servers.size(); id++) {
 
@@ -354,7 +152,7 @@ public class Server {
 
 	}
 
-	private static void broadcastToOtherServers(int myID, String msg) {
+	static void broadcastToOtherServers(int myID, String msg) {
 
 		for (int id = 1; id <= servers.size(); id++) {
 
@@ -394,13 +192,13 @@ public class Server {
 
 	}
 
-	private static String ack(int myID, String request) {
+	static String ack(int myID, String request) {
 		return (ACK + " " +servers.get(myID).toString() + " received the request: " + request);
 	}
 
-	private static String processCommand(String req) {
+	static String processCommand(String req) {
 		String[] tokens = req.split(" ");
-		String result = "";
+		String result;
 		switch (tokens[0]) {
 			case "purchase":
 				String name = tokens[1];
@@ -433,7 +231,7 @@ public class Server {
 		servers.get(serverId).killServer();
 	}
 
-	private static String listAllProducts() {
+	static String listAllProducts() {
 		String result = "";
 		Iterator it = getInventoryIterator();
 		while (it.hasNext()) {
@@ -444,11 +242,11 @@ public class Server {
 		return result;
 	}
 
-	private static synchronized Iterator<Map.Entry<String, Integer>> getInventoryIterator() {
+	static synchronized Iterator<Map.Entry<String, Integer>> getInventoryIterator() {
 		return Inventory.entrySet().iterator();
 	}
 
-	private static synchronized String findUserOrders(String userName) {
+	static synchronized String findUserOrders(String userName) {
 		String result = "";
 		User user = new User(userName);
 		User foundUser;
@@ -470,7 +268,7 @@ public class Server {
 
 	}
 
-	private static synchronized String cancelOrder(Integer id) {
+	static synchronized String cancelOrder(Integer id) {
 		String result;
 		OrderUserPair orderUserPair;
 
@@ -494,7 +292,7 @@ public class Server {
 		return result;
 	}
 
-	private static synchronized String tryPurchase(String name, String product, Integer quantity) {
+	static synchronized String tryPurchase(String name, String product, Integer quantity) {
 		String result = "";
 		Integer qtyAvail = Inventory.get(product);
 
@@ -523,7 +321,7 @@ public class Server {
 		return result;
 	}
 
-	private static synchronized User getUser(String name) {
+	static synchronized User getUser(String name) {
 		User user = new User(name);
 		int userIndex;
 		if (users.contains(user)) {
@@ -535,5 +333,9 @@ public class Server {
 		}
 
 		return user;
+	}
+
+	static Map<Integer, ServerInfo> getAllServers() {
+		return servers;
 	}
 }
