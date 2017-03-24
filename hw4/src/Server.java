@@ -18,11 +18,11 @@ public class Server {
 	final static String 						CMP 			= "[CMP]";
 	final static String 						END 			= "[END]";
 
-	private static Map<Integer,ServerInfo> 		servers 		= new HashMap<>();
-	private static Map<Long, ServerInfo> 		waitingServers	= new HashMap<>();
+	private static Map<Integer,ServerInfo> 		servers 		= new ConcurrentHashMap<>();
+	private static Map<Long, ServerInfo> 		waitingServers	= new ConcurrentHashMap<>();
 	private static Map<String, Integer> 		Inventory 		= new ConcurrentHashMap<>();
-    private static List<User> 					users 			= new ArrayList<>();
 	private static Map<Integer, OrderUserPair> 	allOrders 		= new ConcurrentHashMap<>();
+	private static List<User> 					users 			= new ArrayList<>();
 	private static int 							orderID 		= 1;
 	private static int 							numServers;
 
@@ -45,19 +45,25 @@ public class Server {
 		loadInventory(f);
 
 		ServerSocket serverSocket = new ServerSocket(myPort);
-		List<Socket> allSockets = new ArrayList<>();
+//		List<Socket> allSockets = new ArrayList<>();
 
 		while(true){
 			ServerInfo myInfo = servers.get(myID);
 
 			Socket externalSocket = serverSocket.accept();
-			allSockets.add(externalSocket);
+//			allSockets.add(externalSocket);
 
-			InputStream input = externalSocket.getInputStream();
-			BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
+			SocketStreams.getInStream
+					.apply(externalSocket)
+					.ifPresent(socket_in -> serverHandler(myInfo, externalSocket, socket_in));
+		}
+
+	}
+
+	private static void serverHandler(ServerInfo myInfo, Socket externalSocket, BufferedReader socket_in) {
+		try {
 			String request = socket_in.readLine();
 			String[] reqTok = request.split(" ");
-
 
 			//Spawn a new thread to handle incoming messages!
 			Runnable runnable = () -> handler(externalSocket, myInfo, request);
@@ -65,8 +71,9 @@ public class Server {
 
 			if (!reqTok[0].equals(CMD)) externalSocket.close();
 
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
-
 	}
 
 	private final static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
@@ -93,7 +100,6 @@ public class Server {
 
 	private final static void handler(Socket externalSocket, ServerInfo myInfo, String request){
 		int myID 			= myInfo.getID();
-//		String request 		= "";
 		String response;
 		Integer receivedID;
 
@@ -111,9 +117,6 @@ public class Server {
 				try {
 
 					client_out = new PrintWriter(externalSocket.getOutputStream(), true);
-					input = externalSocket.getInputStream();
-					BufferedReader socket_in = new BufferedReader(new InputStreamReader((input)));
-
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
@@ -141,6 +144,12 @@ public class Server {
 				servers.put(myID, myInfo);
 				addWaitingServer(myInfo);
 
+
+				try {
+					sleep(5000);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 
 				while (true) {
 					//check for smallest timeStamp
