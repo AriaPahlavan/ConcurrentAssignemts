@@ -1,6 +1,7 @@
 import javax.xml.crypto.Data;
 import java.io.*;
 import java.net.*;
+import java.util.List;
 import java.util.Scanner;
 
 public class Client {
@@ -31,7 +32,7 @@ public class Client {
         udpPort = Integer.parseInt(args[2]);
         InetAddress ia = InetAddress.getByName(hostAddress);
 
-        System.out.println("Enter command: ");
+        System.out.print("Enter command: ");
         Scanner sc = new Scanner(System.in);
         while(sc.hasNextLine()) {
             String cmd = sc.nextLine();
@@ -39,6 +40,7 @@ public class Client {
             buffer = cmd.getBytes();
             length = buffer.length;
             spacket = new DatagramPacket(buffer, length, ia, udpPort);
+
 
             if (tokens[0].equals("setmode")) {
                 // TODO: set the mode of communication for sending commands to the server
@@ -53,13 +55,14 @@ public class Client {
                             break;
                     }
                 }
-                curMode = tokens[1].toUpperCase();
-                if(curMode.toUpperCase().equals("U")){
-                    System.out.println("Protocol for Communication: UDP");
-                }
-                else{
-                    System.out.println("Protocol for Communication: TCP");
-                }
+                curMode = tokens[1];
+//                System.out.println(curMode);
+//                if(curMode.toUpperCase().equals(?"U")){
+//                    System.out.println("Protocol for Communication: UDP");
+//                }
+//                else{
+//                    System.out.println("Protocol for Communication: TCP");
+//                }
             }
             else if (tokens[0].equals("purchase")) {
                 // TODO: send appropriate command to the server and display the
@@ -113,13 +116,15 @@ public class Client {
             } else {
                 System.out.println("ERROR: No such command");
             }
-            System.out.println("");
-            System.out.println("Enter command: ");
+
+//            System.out.println("");
+            System.out.print("Enter command: ");
         }
     }
 
     static void processUDP(DatagramPacket sPacket) throws IOException {
-        System.out.println("processing UDP");
+//        System.out.println("processing UDP");
+
         int rlength = 1000;
         byte[] rBuffer = new byte[rlength];
         DatagramPacket rPacket;
@@ -128,11 +133,12 @@ public class Client {
         uSocket.send(sPacket);
         rPacket = new DatagramPacket(rBuffer, rlength);
         uSocket.receive(rPacket);
-        System.out.println(new String(rPacket.getData(), 0, rPacket.getLength()));
+        System.out.println(new String(rPacket.getData(), 0, rPacket.getLength()) );
     }
 
     static void processTCP(String s, int port) throws IOException {
-        System.out.println("processing TCP");
+//        System.out.println("processing TCP");
+
         StringBuilder input = new StringBuilder();
         Socket tSocket = new Socket("localhost",port);
         PrintWriter out = new PrintWriter(tSocket.getOutputStream());
@@ -145,7 +151,7 @@ public class Client {
             input.append(line);
             input.append('\n');
         }
-        tSocket.close();
+        //tSocket.close();
 
     }
 }
