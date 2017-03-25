@@ -1,7 +1,6 @@
-package input;
-
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Created by Sharmistha on 2/28/2017.
@@ -20,12 +19,12 @@ public class User {
         orders.add(order);
     }
 
-    public void removeOrder(int id){
-        for(Order order : orders){
-            if(order.getOrderID() == id){
-                orders.remove(order);
-            }
-        }
+    public boolean removeOrder(int id){
+        orders = orders.parallelStream()
+                .filter(order -> order.getOrderID() != id)
+                .collect(Collectors.toList());
+
+        return orders.isEmpty();
     }
 
     @Override

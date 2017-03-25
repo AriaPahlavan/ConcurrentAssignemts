@@ -1,5 +1,3 @@
-package input;
-
 /**
  * Created by Sharmistha on 2/28/2017.
  */
