@@ -2,9 +2,6 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 
-import java.util.concurrent.*;
-import java.util.stream.Collectors;
-
 public class Server {
 
     static Map<String, Integer> Inventory = new ConcurrentHashMap<>();
@@ -37,7 +34,7 @@ public class Server {
 
         // parse the inventory file
         File f = new File(fileName);
-        Scanner s = null;
+        Scanner s;
 
         try {
             s = new Scanner(f);
@@ -108,13 +105,13 @@ public class Server {
 
                         } finally {
                             //tSocket.close();
-                            break;
                         }
 
+                        break;
                 }
             }
             catch(SocketTimeoutException e){
-                if(curMode == "U"){
+                if(curMode.equals("U")){
                     curMode = "T";
                 }
                 else {
