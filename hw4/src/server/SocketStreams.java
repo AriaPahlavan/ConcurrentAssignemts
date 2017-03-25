@@ -1,4 +1,4 @@
-//EIDs: sm47767, ap44342
+package server;//EIDs: sm47767, ap44342
 
 import java.io.*;
 import java.net.Socket;

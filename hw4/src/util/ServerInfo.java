@@ -1,6 +1,6 @@
-//EIDs: sm47767, ap44342
+package util;//EIDs: sm47767, ap44342
 
-class ServerInfo {
+public class ServerInfo {
 	private Pair<String, Integer> pair;
 	private Long timeStamp;
 	private Integer port;
@@ -30,11 +30,11 @@ class ServerInfo {
 		return serverID;
 	}
 
-	String getHost() {
+	public String getHost() {
 		return pair.getLeft();
 	}
 
-	Integer getPort() {
+	public Integer getPort() {
 		return pair.getRight();
 	}
 

@@ -1,6 +1,6 @@
-//EIDs: sm47767, ap44342
+package util;//EIDs: sm47767, ap44342
 
-class OrderUserPair {
+public class OrderUserPair {
 	private Pair<Order, User> pair;
 
 	public OrderUserPair(Order order, User user) {

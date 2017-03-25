@@ -1,6 +1,11 @@
+package server;
+
+import util.ServerInfo;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
+import java.time.Clock;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -8,32 +13,30 @@ import java.util.function.Function;
 import static java.lang.Thread.sleep;
 
 /**
- * Created by aria on 3/24/17.
+ * Created by Aria Pahlavan on 3/24/17.
  */
-public class ServerHandlers {
-	private final static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
-		PrintWriter client_out;
+class ServerHandlers {
 
-		Optional<PrintWriter> maybeClient = SocketStreams.getOutStream
-				.apply(socket);
-
-		if (maybeClient.isPresent()) client_out = maybeClient.get();
-		else return;
-
+	private static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
+		PrintWriter client_out = SocketStreams.getOutStream.apply(socket).get();
 		try {
 
 			while (!Thread.currentThread().isInterrupted()) {
+//				System.out.println("[DEBUG] Ack at " + Clock.systemUTC().millis());
+
 				//send ack to client
 				client_out.println(Server.ack(Integer.parseInt(idAndReq[0]), idAndReq[1]));
-				sleep(80);
+				sleep(70);
 			}
 
-		} catch (InterruptedException ignored) {}
+		}
+		catch (InterruptedException ignored) {}
 	};
+
 	private static Function<String, BiConsumer<Socket, ServerInfo>> clientMsgHandler = req -> ((externalSocket, myInfo) -> {
-		int myID= myInfo.getID();
-		String response;
-		String request = req;
+		int         myID       = myInfo.getID();
+		String      response;
+		String      request    = req;
 		PrintWriter client_out = null;
 
 		request = request.substring(6);
@@ -41,13 +44,16 @@ public class ServerHandlers {
 		try {
 
 			client_out = new PrintWriter(externalSocket.getOutputStream(), true);
-		} catch (IOException e) {
+		}
+		catch (IOException e) {
 			e.printStackTrace();
 		}
 
-		String[] idAndReq = new String[]{String.valueOf(myID), request};
-		Runnable runnable = () -> clientAckHandler.accept(externalSocket, idAndReq);
-		Thread clientAcknowledger = new Thread(runnable);
+		String[] idAndReq           = new String[]{String.valueOf(myID), request};
+		Runnable runnable           = () -> clientAckHandler.accept(externalSocket, idAndReq);
+		Thread   clientAcknowledger = new Thread(runnable);
+
+//		System.out.println("[DEBUG] Running acknowledger at " + Clock.systemUTC().millis());
 		clientAcknowledger.start();
 
 		//send request to all other servers
@@ -55,11 +61,14 @@ public class ServerHandlers {
 		long myTimeStamp = System.currentTimeMillis() % 1000000;
 		myInfo.setTimeStamp(myTimeStamp);
 
-		String reqMsg = Server.REQ + " " + myInfo.getPort()
-				+ " " + myInfo.getHost()
-				+ " " + myInfo.getID()
-				+ " " + myInfo.getTimeStamp();
+		String reqMsg = Server.REQ
+		                + " " + myInfo.getPort()
+		                + " " + myInfo.getHost()
+		                + " " + myInfo.getID()
+		                + " " + myInfo.getTimeStamp();
 
+
+//		System.out.println("[DEBUG] Broadcasting request at " + Clock.systemUTC().millis());
 		Server.broadcastToOtherServers(myID, reqMsg);
 
 
@@ -76,6 +85,7 @@ public class ServerHandlers {
 
 			if (firstServerInline.equals(myInfo)) {
 				//enter CS and process command
+//				System.out.println("[DEBUG] Entering CS at " + Clock.systemUTC().millis());
 				response = Server.processCommand(request);
 
 
@@ -83,8 +93,10 @@ public class ServerHandlers {
 
 				try {
 					clientAcknowledger.join();
-				} catch (InterruptedException ignored) {}
+				}
+				catch (InterruptedException ignored) {}
 
+//				System.out.println("[DEBUG] Responding to client at " + Clock.systemUTC().millis());
 				client_out.println(response);
 				client_out.println(Server.END);
 				client_out.flush();
@@ -100,36 +112,38 @@ public class ServerHandlers {
 			else {
 				//check if server first in line is alive
 				try {
-
 					Socket firstServer = new Socket(firstServerInline.getHost(), firstServerInline.getPort());
-
-				} catch (IOException e) {
+				}
+				catch (IOException e) {
 					Server.removeAllWaiting(firstServerInline);
 					Server.killThisServer(firstServerInline.getID());
 				}
 			}
 		}
 	});
-	static Function<Socket, Optional<String>> maybeRequest = socket -> {
 
+	private static Function<Socket, Optional<String>> maybeRequest = socket -> {
 		String request = null;
 
 		try {
+//			System.out.println("[DEBUG] received message at " + Clock.systemUTC().millis());
 			request = SocketStreams.getInStream.apply(socket).get().readLine();
-
-		} catch (IOException ignored) {}
+		}
+		catch (Exception ignored) {}
 
 		return Optional.ofNullable(request);
 	};
-	private static Function<String, Optional<String>> maybeTag = request -> {
+
+	static Function<String, Optional<String>> maybeTag = request -> {
 
 		String[] reqTok = request.split(" ");
-		String tag = reqTok[0];
+		String   tag    = reqTok[0];
 
 		return Optional.ofNullable(tag);
 	};
+
 	private static BiConsumer<String, ServerInfo> serverMsgHandler = (request, myInfo) -> {
-		int myID = myInfo.getID();
+		int     myID = myInfo.getID();
 		Integer receivedID;
 
 		String[] reqTok = request.split(" ");
@@ -137,10 +151,10 @@ public class ServerHandlers {
 
 		switch (reqTok[0]) {
 			case Server.REQ:
-				Integer receivedPort 	= Integer.parseInt(reqTok[1]);
-				String receivedHost 	= reqTok[2];
-				receivedID 				= Integer.parseInt(reqTok[3]);
-				Long receivedTimeStamp 	= Long.parseLong(reqTok[4]);
+				Integer receivedPort = Integer.parseInt(reqTok[1]);
+				String receivedHost = reqTok[2];
+				receivedID = Integer.parseInt(reqTok[3]);
+				Long receivedTimeStamp = Long.parseLong(reqTok[4]);
 
 				//insert received request into waitingServers
 				ServerInfo otherServer = Server.getAllServers().get(receivedID);
@@ -157,10 +171,11 @@ public class ServerHandlers {
 					PrintWriter otherOut;
 					otherOut = new PrintWriter(otherSocket.getOutputStream());
 
-					otherOut.println(Server.ACK + " server " + myInfo + " received request: " + request);
+					otherOut.println(Server.ACK + "server " + myInfo + " received request: " + request);
 					otherOut.flush();
 
-				} catch (IOException e) {
+				}
+				catch (IOException e) {
 					e.printStackTrace();
 				}
 
@@ -175,12 +190,12 @@ public class ServerHandlers {
 				int i;
 
 				for (i = 0; i < request.length(); i++) {
-					if( request.toCharArray()[i] == ' ' )
+					if (request.toCharArray()[i] == ' ')
 						break;
 
 				}
 
-				String command = request.substring(i+1);
+				String command = request.substring(i + 1);
 
 				Server.processCommand(command);
 
@@ -196,12 +211,12 @@ public class ServerHandlers {
 					int j;
 
 					for (j = 0; j < request.length(); j++) {
-						if( request.toCharArray()[j] == ' ' )
+						if (request.toCharArray()[j] == ' ')
 							break;
 
 					}
 
-					String completedCommand = request.substring(j+1);
+					String completedCommand = request.substring(j + 1);
 					Server.processCommand(completedCommand);
 				}
 				break;
@@ -211,24 +226,27 @@ public class ServerHandlers {
 				break;
 		}
 	};
-	static Function<String, BiConsumer<Socket, ServerInfo>> handler = request -> (externalSocket, myInfo) -> {
-			maybeTag.apply(request).ifPresent(tag -> {
 
-				try {
-					if (tag.equals(Server.CMD)) {
-						//Spawn a new thread to handle incoming messages!
-						BiConsumer<Socket, ServerInfo> clientHandlerWithReq = clientMsgHandler.apply(request);
-						Runnable runnable = () -> clientHandlerWithReq.accept(externalSocket, myInfo);
-						new Thread(runnable).start();
-					}
-					if (!tag.equals(Server.CMD)) {
-						externalSocket.close();
-						Runnable runnable = () -> serverMsgHandler.accept(request, myInfo);
-						new Thread(runnable).start();
-					}
+	private static Function<Optional<String>, BiConsumer<Socket, ServerInfo>> handler = optionReq -> (externalSocket, myInfo) -> {
+		optionReq.ifPresent(request -> maybeTag.apply(request).ifPresent(tag -> {
+			try {
+				if (tag.equals(Server.CMD)) {
+					//Spawn a new thread to handle incoming messages!
+					BiConsumer<Socket, ServerInfo> clientHandlerWithReq = clientMsgHandler.apply(request);
+					Runnable clientTask = () -> clientHandlerWithReq.accept(externalSocket, myInfo);
+					new Thread(clientTask).start();
 				}
-				catch (IOException ignored){}
 
-			});
+				if (!tag.equals(Server.CMD)) {
+					externalSocket.close();
+					Runnable serverTask = () -> serverMsgHandler.accept(request, myInfo);
+					new Thread(serverTask).start();
+				}
+			}
+			catch (IOException ignored) {}
+
+		}));
 	};
+
+	static Function<Socket, BiConsumer<Socket, ServerInfo>> serverHandler = handler.compose(maybeRequest);
 }

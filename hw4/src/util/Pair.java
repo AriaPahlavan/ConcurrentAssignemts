@@ -1,4 +1,4 @@
-//EIDs: sm47767, ap44342
+package util;//EIDs: sm47767, ap44342
 
 class Pair<T, U> {
 	private T left;

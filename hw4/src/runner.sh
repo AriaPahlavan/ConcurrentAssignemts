@@ -3,12 +3,13 @@
 oneStatus="alive"
 twoStatus="alive"
 loop="true"
+root="server/"
 
-javac Server.java
-java Server < server1.cfg&
+javac ${root}Server.java
+java ${root}Server < ${root}server1.cfg&
 first=`echo $!`
 
-java Server < server2.cfg&
+java ${root}Server < ${root}server2.cfg&
 second=`echo $!`
 
 sleep 1
@@ -38,4 +39,4 @@ done
 [[ $oneStatus == "alive" ]] && kill -9 $first && echo "finally killing one"
 [[ $twoStatus == "alive" ]] && kill -9 $second && echo "finally killing two"
 
-rm -rf ./*.class
+rm -rf ./*/*.class
