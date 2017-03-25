@@ -1,7 +1,9 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
+
 import java.util.concurrent.*;
+import java.util.stream.Collectors;
 
 public class Server {
 
@@ -37,24 +39,24 @@ public class Server {
         File f = new File(fileName);
         Scanner s = null;
 
-        try{
+        try {
             s = new Scanner(f);
-            while(s.hasNext()){
-                Inventory.put(s.next(),s.nextInt());
+            while (s.hasNext()) {
+                Inventory.put(s.next(), s.nextInt());
             }
-        } catch(FileNotFoundException e){
+        } catch (FileNotFoundException e) {
             e.printStackTrace();
         }
-
 
 
         // TODO: handle request from clients
         DatagramSocket uSocket = new DatagramSocket(udpPort);
         ServerSocket tSocket = new ServerSocket(tcpPort);
         byte[] buf = new byte[1000];
-        while(true){
+        while (true) {
             String request = "";
             String response = "";
+
 //            System.out.println(curMode);
             uSocket.setSoTimeout(100);
             tSocket.setSoTimeout(100);
@@ -82,6 +84,7 @@ public class Server {
                         try {
                             Socket clientSocket = tSocket.accept();
                             clientSocket.setSoTimeout(100);
+
                             try {
                                 PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
                                 InputStream input = clientSocket.getInputStream();
@@ -95,6 +98,7 @@ public class Server {
                                 for (int i = 0; i < responseSplit.length; i++) {
                                     out.println(responseSplit[i]);
                                 }
+
                                 out.flush();
                             }
 
