@@ -30,8 +30,8 @@
 
 # IntelliJ
 */out/*
-
 */*.iml
+*/*.class
 
 # mpeltonen/sbt-idea plugin
 .idea_modules/

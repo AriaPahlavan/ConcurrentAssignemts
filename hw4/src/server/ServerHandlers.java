@@ -5,7 +5,6 @@ import util.ServerInfo;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.Socket;
-import java.time.Clock;
 import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -16,10 +15,10 @@ import static java.lang.Thread.sleep;
  * Created by Aria Pahlavan on 3/24/17.
  */
 class ServerHandlers {
-
 	private static BiConsumer<Socket, String[]> clientAckHandler = (socket, idAndReq) -> {
 		PrintWriter client_out = SocketStreams.getOutStream.apply(socket).get();
 		try {
+
 
 			while (!Thread.currentThread().isInterrupted()) {
 //				System.out.println("[DEBUG] Ack at " + Clock.systemUTC().millis());
@@ -233,7 +232,7 @@ class ServerHandlers {
 				if (tag.equals(Server.CMD)) {
 					//Spawn a new thread to handle incoming messages!
 					BiConsumer<Socket, ServerInfo> clientHandlerWithReq = clientMsgHandler.apply(request);
-					Runnable clientTask = () -> clientHandlerWithReq.accept(externalSocket, myInfo);
+					Runnable                       clientTask           = () -> clientHandlerWithReq.accept(externalSocket, myInfo);
 					new Thread(clientTask).start();
 				}
 
