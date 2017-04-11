@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/aria/java/ee360p/ConcurrentAssignemts/hw5/java/q2/hello.cpp
+iostream
+-
+mpi.h
+-
+fstream
+-
+vector
+-
+string
+-
+stdlib.h
+-
+

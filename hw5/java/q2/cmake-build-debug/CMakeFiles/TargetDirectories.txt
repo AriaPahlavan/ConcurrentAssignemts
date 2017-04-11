@@ -1,0 +1,3 @@
+/home/aria/java/ee360p/ConcurrentAssignemts/hw5/java/q2/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/home/aria/java/ee360p/ConcurrentAssignemts/hw5/java/q2/cmake-build-debug/CMakeFiles/edit_cache.dir
+/home/aria/java/ee360p/ConcurrentAssignemts/hw5/java/q2/cmake-build-debug/CMakeFiles/q2.dir
